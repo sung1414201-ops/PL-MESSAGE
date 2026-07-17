@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMS 서초영재관 - 내 성적</title>
+<style>
+  :root{
+    --navy:#1B2A4A; --gold:#C9A24B; --coral:#D85A30;
+    --bg:#F6F5F1; --card:#FFFFFF; --text:#22242A; --muted:#6B6E76; --border:#E3E1D9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
+  header{background:var(--navy);color:#fff;padding:20px 24px;text-align:center;}
+  header h1{margin:0;font-size:18px;font-weight:600;}
+  .wrap{max-width:600px;margin:0 auto;padding:24px 16px 60px;}
+  .login{background:#fff;border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-top:40px;}
+  .login input{width:100%;padding:14px;font-size:18px;letter-spacing:4px;text-align:center;
+    border:1px solid var(--border);border-radius:8px;margin:14px 0;text-transform:uppercase;}
+  .login button{width:100%;padding:12px;border:none;border-radius:8px;background:var(--coral);
+    color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card h2{font-size:15px;margin:0 0 14px;color:var(--navy);}
+  .greet{font-size:16px;font-weight:600;margin-bottom:4px;}
+  .sub{font-size:13px;color:var(--muted);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:500;}
+  .score{font-weight:600;}
+  .tagpill{display:inline-block;background:#F0EEE4;color:var(--navy);border-radius:12px;
+    padding:2px 8px;font-size:11px;margin:2px 2px 0 0;}
+  .feedback{background:#FBF6EC;border:1px solid var(--gold);border-radius:8px;padding:14px;
+    font-size:14px;line-height:1.7;color:#4A3C10;}
+  .empty{color:var(--muted);font-size:13px;padding:10px 0;}
+  #app{display:none;}
+</style>
+</head>
+<body>
+<header><h1>CMS 서초영재관 · 내 성적 조회</h1></header>
+
+<div class="wrap">
+  <div class="login" id="loginBox">
+    <div style="font-size:14px;color:var(--muted);margin-bottom:6px;">학생 코드를 입력하세요</div>
+    <input type="text" id="codeInput" placeholder="예: A3K9F2" maxlength="10">
+    <button onclick="login()">조회하기</button>
+    <div id="loginError" style="color:#A3312F;font-size:13px;margin-top:10px;"></div>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <div class="greet" id="studentName"></div>
+      <div class="sub" id="studentMeta"></div>
+    </div>
+
+    <div class="card">
+      <h2>주간테스트</h2>
+      <table id="weeklyTable"><thead><tr><th>날짜</th><th>유형</th><th>점수</th><th>특징</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>월간테스트</h2>
+      <table id="monthlyTable"><thead><tr><th>회차</th><th>날짜</th><th>점수</th><th>등급</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>선생님 코멘트</h2>
+      <div id="feedbackBox"><div class="empty">아직 등록된 코멘트가 없습니다.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
+
+async function login(){
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  const err = document.getElementById('loginError');
+  if(!code){ err.textContent = '코드를 입력하세요'; return; }
+  err.textContent = '조회 중...';
+  try{
+    const res = await fetch(API_URL + '?action=getStudentRecords&code=' + code);
+    const data = await res.json();
+    if(data.error){ err.textContent = data.error; return; }
+    renderData(data);
+    document.getElementById('loginBox').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  } catch(e){
+    err.textContent = 'API_URL이 설정되지 않았습니다';
+  }
+}
+
+function renderData(data){
+  document.getElementById('studentName').textContent = data.student.이름 + ' 학생';
+  document.getElementById('studentMeta').textContent = data.student.학년 + ' · ' + data.student.반;
+
+  const wBody = document.querySelector('#weeklyTable tbody');
+  wBody.innerHTML = data.weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="4" class="empty">기록 없음</td></tr>';
+
+  const mBody = document.querySelector('#monthlyTable tbody');
+  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.등급||'-') + '</td></tr>').join('') || '<tr><td colspan="4" class="empty">기록 없음</td></tr>';
+
+  const fbBox = document.getElementById('feedbackBox');
+  if(data.analysis && data.analysis.AI피드백){
+    fbBox.innerHTML = '<div class="feedback">' + data.analysis.AI피드백 + '</div>';
+  }
+}
+
+function tagsHtml(tagStr){
+  if(!tagStr) return '';
+  return tagStr.split(',').filter(Boolean).map(t => '<span class="tagpill">' + t + '</span>').join('');
+}
+function fmtDate(d){
+  if(!d) return '-';
+  const date = new Date(d);
+  if(isNaN(date)) return d;
+  return (date.getMonth()+1) + '/' + date.getDate();
+}
+
+document.getElementById('codeInput').addEventListener('keypress', e => {
+  if(e.key === 'Enter') login();
+});
+</script>
+</body>
+</html>

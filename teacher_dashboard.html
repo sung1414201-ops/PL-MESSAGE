@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMS 서초영재관 - 전체 학생 대시보드</title>
+<style>
+  :root{
+    --navy:#1B2A4A; --gold:#C9A24B; --coral:#D85A30;
+    --bg:#F6F5F1; --card:#FFFFFF; --text:#22242A; --muted:#6B6E76; --border:#E3E1D9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
+  header{background:var(--navy);color:#fff;padding:20px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:18px;font-weight:600;}
+  header p{margin:4px 0 0;font-size:13px;color:#C9CEDD;}
+  header a{color:#fff;background:var(--coral);padding:8px 14px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 16px 60px;}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+  .chip{padding:8px 16px;border-radius:20px;background:#fff;border:1px solid var(--border);font-size:13px;cursor:pointer;color:var(--muted);}
+  .chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .classGroup{margin-bottom:24px;}
+  .classGroup h2{font-size:15px;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:6px;margin-bottom:10px;}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
+  th{background:#F0EEE4;color:var(--muted);font-weight:600;}
+  tr:last-child td{border-bottom:none;}
+  .score{font-weight:600;}
+  .muted{color:var(--muted);}
+  a.viewlink{color:var(--coral);font-weight:600;text-decoration:none;}
+  a.viewlink:hover{text-decoration:underline;}
+  .loading{padding:40px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CMS 서초영재관 · 전체 학생 대시보드</h1>
+    <p>반별 성적 현황 한눈에 보기</p>
+  </div>
+  <a href="teacher_input.html">← 성적 입력으로</a>
+</header>
+
+<div class="wrap">
+  <div class="filters" id="filters"></div>
+  <div id="content" class="loading">불러오는 중...</div>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
+let ALL_STUDENTS = [];
+let STUDENT_RECORDS = {};
+let currentFilter = '';
+
+async function init(){
+  const res = await fetch(API_URL + '?action=getAllStudents');
+  ALL_STUDENTS = await res.json();
+
+  const classes = Array.from(new Set(ALL_STUDENTS.map(s => s.반).filter(Boolean))).sort();
+  const filterBox = document.getElementById('filters');
+  filterBox.innerHTML = '<div class="chip active" data-c="">전체 (' + ALL_STUDENTS.length + '명)</div>' +
+    classes.map(c => '<div class="chip" data-c="' + c + '">' + c + '</div>').join('');
+  filterBox.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      currentFilter = chip.getAttribute('data-c');
+      filterBox.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      render();
+    });
+  });
+
+  await Promise.all(ALL_STUDENTS.map(async s => {
+    try{
+      const r = await fetch(API_URL + '?action=getStudentRecords&code=' + s.학생코드);
+      STUDENT_RECORDS[s.학생코드] = await r.json();
+    } catch(e){ STUDENT_RECORDS[s.학생코드] = null; }
+  }));
+
+  render();
+}
+
+function latestOf(arr){
+  if(!arr || arr.length === 0) return null;
+  return arr[arr.length - 1];
+}
+
+function render(){
+  const content = document.getElementById('content');
+  const filtered = currentFilter ? ALL_STUDENTS.filter(s => s.반 === currentFilter) : ALL_STUDENTS;
+  const byClass = {};
+  filtered.forEach(s => {
+    if(!byClass[s.반]) byClass[s.반] = [];
+    byClass[s.반].push(s);
+  });
+
+  content.className = '';
+  content.innerHTML = Object.keys(byClass).sort().map(cls => {
+    const rows = byClass[cls].map(s => {
+      const rec = STUDENT_RECORDS[s.학생코드];
+      const w = rec ? latestOf(rec.weekly) : null;
+      const m = rec ? latestOf(rec.monthly) : null;
+      const wText = w ? (w.점수 + '/' + w.총점 + (w.반평균 ? ' (반평균 ' + w.반평균 + ')' : '')) : '<span class="muted">기록 없음</span>';
+      const mText = m ? (m.점수 + '/' + m.총점 + (m.반평균 ? ' (반평균 ' + m.반평균 + ')' : '')) : '<span class="muted">기록 없음</span>';
+      return '<tr>' +
+        '<td>' + s.이름 + '</td>' +
+        '<td>' + s.학년 + '</td>' +
+        '<td class="score">' + wText + '</td>' +
+        '<td class="score">' + mText + '</td>' +
+        '<td><a class="viewlink" href="student_view.html?code=' + s.학생코드 + '" target="_blank">학생 페이지 →</a></td>' +
+      '</tr>';
+    }).join('');
+    return '<div class="classGroup"><h2>' + cls + ' (' + byClass[cls].length + '명)</h2>' +
+      '<table><thead><tr><th>이름</th><th>학년</th><th>최근 주간</th><th>최근 월간</th><th>바로가기</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>';
+  }).join('') || '<div class="loading">학생이 없습니다</div>';
+}
+
+init();
+</script>
+</body>
+</html>

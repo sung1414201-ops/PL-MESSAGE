@@ -78,8 +78,16 @@
         </div>
       </div>
       <div class="row">
+        <div><label>과정</label><input type="text" id="wCourse" placeholder="예: 매쏠로지"></div>
+        <div><label>시험 단원</label><input type="text" id="wUnit" placeholder="예: 이차방정식"></div>
+      </div>
+      <div class="row">
         <div><label>점수</label><input type="number" id="wScore"></div>
         <div><label>총점</label><input type="number" id="wTotal" value="100"></div>
+      </div>
+      <div class="row">
+        <div><label>반평균</label><input type="number" id="wClassAvg" placeholder="반별 평균 점수"></div>
+        <div><label>등수</label><input type="text" id="wRank" placeholder="예: 3/24"></div>
       </div>
     </div>
 
@@ -89,9 +97,16 @@
         <div><label>날짜</label><input type="date" id="mDate"></div>
       </div>
       <div class="row">
+        <div><label>과정</label><input type="text" id="mCourse" placeholder="예: FIT반"></div>
+        <div><label>시험 범위</label><input type="text" id="mScope" placeholder="예: 1~3단원"></div>
+      </div>
+      <div class="row">
         <div><label>점수</label><input type="number" id="mScore"></div>
         <div><label>총점</label><input type="number" id="mTotal" value="100"></div>
-        <div><label>등급</label><input type="text" id="mGrade" placeholder="예: 1등급"></div>
+      </div>
+      <div class="row">
+        <div><label>평균</label><input type="number" id="mAvg" placeholder="전체 평균 점수"></div>
+        <div><label>등수</label><input type="text" id="mRank" placeholder="예: 5/40"></div>
       </div>
     </div>
   </div>
@@ -185,14 +200,18 @@ async function saveTest(){
   if(currentTab === 'weekly'){
     payload = { action:'saveWeekly', data:{
       code, date: document.getElementById('wDate').value, type: document.getElementById('wType').value,
+      course: document.getElementById('wCourse').value, unit: document.getElementById('wUnit').value,
       score: document.getElementById('wScore').value, total: document.getElementById('wTotal').value,
+      classAvg: document.getElementById('wClassAvg').value, rank: document.getElementById('wRank').value,
       tags, memo
     }};
   } else {
     payload = { action:'saveMonthly', data:{
       code, round: document.getElementById('mRound').value, date: document.getElementById('mDate').value,
+      course: document.getElementById('mCourse').value, scope: document.getElementById('mScope').value,
       score: document.getElementById('mScore').value, total: document.getElementById('mTotal').value,
-      grade: document.getElementById('mGrade').value, tags, memo
+      avg: document.getElementById('mAvg').value, rank: document.getElementById('mRank').value,
+      tags, memo
     }};
   }
 

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMS 서초영재관 - 성적 입력</title>
+<style>
+  :root{
+    --navy:#1B2A4A; --navy-light:#2E4270; --gold:#C9A24B; --coral:#D85A30;
+    --bg:#F6F5F1; --card:#FFFFFF; --text:#22242A; --muted:#6B6E76; --border:#E3E1D9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
+  header{background:var(--navy);color:#fff;padding:20px 24px;}
+  header h1{margin:0;font-size:18px;font-weight:600;}
+  header p{margin:4px 0 0;font-size:13px;color:#C9CEDD;}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 60px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card h2{font-size:15px;margin:0 0 14px;color:var(--navy);}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px;}
+  select,input[type=number],input[type=date],input[type=text],textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
+    font-size:14px;background:#fff;color:var(--text);
+  }
+  textarea{resize:vertical;min-height:60px;}
+  .row{display:flex;gap:10px;}
+  .row > *{flex:1;}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;}
+  .tab{flex:1;text-align:center;padding:10px;border-radius:8px;background:#EFEDE5;color:var(--muted);font-size:13px;cursor:pointer;border:1px solid transparent;}
+  .tab.active{background:var(--navy);color:#fff;}
+  .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+  .tag{padding:6px 12px;border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer;color:var(--muted);user-select:none;}
+  .tag.selected{background:var(--gold);border-color:var(--gold);color:#3B2E0F;}
+  button{width:100%;padding:12px;border:none;border-radius:8px;background:var(--coral);color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;}
+  button:hover{opacity:0.92;}
+  button.secondary{background:var(--navy);}
+  .status{font-size:13px;margin-top:10px;padding:10px;border-radius:8px;display:none;}
+  .status.ok{display:block;background:#E9F5EC;color:#276B3C;}
+  .status.err{display:block;background:#FBEAEA;color:#A3312F;}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>CMS 서초영재관 · 성적 입력</h1>
+  <p>주간/월간 테스트 기록 및 학생 분석 태깅</p>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <h2>1. 학생 선택</h2>
+    <select id="studentSelect"><option value="">불러오는 중...</option></select>
+    <div class="hint">목록에 없으면 아래에서 새 학생을 등록하세요.</div>
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--navy);">+ 새 학생 등록</summary>
+      <div class="row" style="margin-top:10px;">
+        <div><label>이름</label><input type="text" id="newName"></div>
+        <div><label>학년</label><input type="text" id="newGrade" placeholder="예: 중2"></div>
+      </div>
+      <label>반</label><input type="text" id="newClass" placeholder="예: GS탑반">
+      <button class="secondary" onclick="addStudent()">학생 등록</button>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>2. 시험 종류</h2>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('weekly')" id="tabWeekly">주간테스트</div>
+      <div class="tab" onclick="switchTab('monthly')" id="tabMonthly">월간테스트</div>
+    </div>
+
+    <div id="weeklyForm">
+      <div class="row">
+        <div><label>날짜</label><input type="date" id="wDate"></div>
+        <div><label>유형</label>
+          <select id="wType"><option>기본</option><option>심화</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>점수</label><input type="number" id="wScore"></div>
+        <div><label>총점</label><input type="number" id="wTotal" value="100"></div>
+      </div>
+    </div>
+
+    <div id="monthlyForm" style="display:none;">
+      <div class="row">
+        <div><label>회차</label><input type="text" id="mRound" placeholder="예: 7월 3주차"></div>
+        <div><label>날짜</label><input type="date" id="mDate"></div>
+      </div>
+      <div class="row">
+        <div><label>점수</label><input type="number" id="mScore"></div>
+        <div><label>총점</label><input type="number" id="mTotal" value="100"></div>
+        <div><label>등급</label><input type="text" id="mGrade" placeholder="예: 1등급"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. 특징 태그 (표준 10종, 복수 선택)</h2>
+    <div class="tags" id="tagList"></div>
+    <label>추가 메모 (선택)</label>
+    <textarea id="memo" placeholder="자유 서술 메모"></textarea>
+    <button onclick="saveTest()">기록 저장</button>
+    <div class="status" id="saveStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>4. AI 종합 피드백 생성</h2>
+    <div class="hint">선택된 학생의 누적 기록을 바탕으로 피드백을 생성합니다. 생성 후 종합분석 시트에 자동 저장되며, 검수 후 학생 페이지에 노출됩니다.</div>
+    <button class="secondary" onclick="generateFeedback()">AI 피드백 생성</button>
+    <div class="status" id="feedbackStatus"></div>
+  </div>
+
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
+
+const STANDARD_TAGS = [
+  '계산실수형','개념이해부족','시간관리부족','문제해석부족','응용력부족',
+  '검산습관부족','성실꾸준형','고난도강함','컨디션기복','경쟁심강함'
+];
+let selectedTags = new Set();
+let currentTab = 'weekly';
+
+function renderTags(){
+  const box = document.getElementById('tagList');
+  box.innerHTML = '';
+  STANDARD_TAGS.forEach(tag => {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = tag;
+    el.onclick = () => {
+      if(selectedTags.has(tag)){ selectedTags.delete(tag); el.classList.remove('selected'); }
+      else { selectedTags.add(tag); el.classList.add('selected'); }
+    };
+    box.appendChild(el);
+  });
+}
+renderTags();
+
+function switchTab(t){
+  currentTab = t;
+  document.getElementById('tabWeekly').classList.toggle('active', t==='weekly');
+  document.getElementById('tabMonthly').classList.toggle('active', t==='monthly');
+  document.getElementById('weeklyForm').style.display = t==='weekly' ? 'block':'none';
+  document.getElementById('monthlyForm').style.display = t==='monthly' ? 'block':'none';
+}
+
+async function loadStudents(){
+  const sel = document.getElementById('studentSelect');
+  try {
+    const res = await fetch(API_URL + '?action=getAllStudents');
+    const students = await res.json();
+    sel.innerHTML = students.map(s => '<option value="' + s.학생코드 + '">' + s.이름 + ' (' + s.학년 + '/' + s.반 + ')</option>').join('');
+  } catch(e){
+    sel.innerHTML = '<option value="">API_URL을 설정하세요</option>';
+  }
+}
+loadStudents();
+
+async function addStudent(){
+  const name = document.getElementById('newName').value;
+  const grade = document.getElementById('newGrade').value;
+  const cls = document.getElementById('newClass').value;
+  if(!name){ alert('이름을 입력하세요'); return; }
+  const res = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({action:'addStudent', data:{name, grade, class:cls}})
+  });
+  const result = await res.json();
+  alert('등록 완료! 학생 코드: ' + result.code + '\n이 코드를 학생에게 전달하세요.');
+  loadStudents();
+}
+
+async function saveTest(){
+  const code = document.getElementById('studentSelect').value;
+  const status = document.getElementById('saveStatus');
+  if(!code){ showStatus(status, '학생을 선택하세요', false); return; }
+  const tags = Array.from(selectedTags);
+  const memo = document.getElementById('memo').value;
+
+  let payload;
+  if(currentTab === 'weekly'){
+    payload = { action:'saveWeekly', data:{
+      code, date: document.getElementById('wDate').value, type: document.getElementById('wType').value,
+      score: document.getElementById('wScore').value, total: document.getElementById('wTotal').value,
+      tags, memo
+    }};
+  } else {
+    payload = { action:'saveMonthly', data:{
+      code, round: document.getElementById('mRound').value, date: document.getElementById('mDate').value,
+      score: document.getElementById('mScore').value, total: document.getElementById('mTotal').value,
+      grade: document.getElementById('mGrade').value, tags, memo
+    }};
+  }
+
+  try{
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(payload) });
+    const result = await res.json();
+    if(result.success) showStatus(status, '저장되었습니다', true);
+    else showStatus(status, result.error || '오류 발생', false);
+  } catch(e){ showStatus(status, 'API_URL을 설정하세요', false); }
+}
+
+async function generateFeedback(){
+  const code = document.getElementById('studentSelect').value;
+  const status = document.getElementById('feedbackStatus');
+  if(!code){ showStatus(status, '학생을 선택하세요', false); return; }
+  showStatus(status, '생성 중...', true);
+  try{
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({action:'generateFeedback', code}) });
+    const result = await res.json();
+    if(result.success) showStatus(status, result.feedback, true);
+    else showStatus(status, result.error || '오류 발생', false);
+  } catch(e){ showStatus(status, 'API_URL을 설정하세요', false); }
+}
+
+function showStatus(el, msg, ok){
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+</script>
+</body>
+</html>

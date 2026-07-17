@@ -11,9 +11,10 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
-  header{background:var(--navy);color:#fff;padding:20px 24px;}
+  header{background:var(--navy);color:#fff;padding:20px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
   header h1{margin:0;font-size:18px;font-weight:600;}
   header p{margin:4px 0 0;font-size:13px;color:#C9CEDD;}
+  header a{color:#fff;background:var(--coral);padding:8px 14px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;}
   .wrap{max-width:720px;margin:0 auto;padding:24px 16px 60px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
   .card h2{font-size:15px;margin:0 0 14px;color:var(--navy);}
@@ -22,7 +23,7 @@
     width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
     font-size:14px;background:#fff;color:var(--text);
   }
-  textarea{resize:vertical;min-height:60px;}
+  textarea{resize:vertical;min-height:80px;}
   .row{display:flex;gap:10px;}
   .row > *{flex:1;}
   .tabs{display:flex;gap:8px;margin-bottom:16px;}
@@ -34,27 +35,49 @@
   button{width:100%;padding:12px;border:none;border-radius:8px;background:var(--coral);color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;}
   button:hover{opacity:0.92;}
   button.secondary{background:var(--navy);}
+  button.danger{background:#A3312F;}
   .status{font-size:13px;margin-top:10px;padding:10px;border-radius:8px;display:none;}
   .status.ok{display:block;background:#E9F5EC;color:#276B3C;}
   .status.err{display:block;background:#FBEAEA;color:#A3312F;}
   .hint{font-size:12px;color:var(--muted);margin-top:4px;}
+  details{margin-top:10px;}
+  summary{cursor:pointer;font-size:13px;color:var(--navy);font-weight:600;}
 </style>
 </head>
 <body>
 <header>
-  <h1>CMS 서초영재관 · 성적 입력</h1>
-  <p>주간/월간 테스트 기록 및 학생 분석 태깅</p>
+  <div>
+    <h1>CMS 서초영재관 · 성적 입력</h1>
+    <p>주간/월간 테스트 기록 및 학생 관리</p>
+  </div>
+  <a href="teacher_dashboard.html">전체 학생 대시보드 →</a>
 </header>
 
 <div class="wrap">
 
   <div class="card">
     <h2>1. 학생 선택</h2>
+    <label>반 필터</label>
+    <select id="classFilter"><option value="">전체 반</option></select>
+    <label>학생</label>
     <select id="studentSelect"><option value="">불러오는 중...</option></select>
-    <button class="secondary" style="margin-top:8px;background:#A3312F;" onclick="deleteStudent()">선택한 학생 삭제</button>
+    <button class="danger" onclick="deleteStudent()">선택한 학생 삭제</button>
     <div class="hint">목록에 없으면 아래에서 새 학생을 등록하세요.</div>
-    <details style="margin-top:10px;">
-      <summary style="cursor:pointer;font-size:13px;color:var(--navy);">+ 새 학생 등록</summary>
+
+    <details>
+      <summary>학생정보 수정 (이름/학년/반)</summary>
+      <div class="row" style="margin-top:10px;">
+        <div><label>이름</label><input type="text" id="editName"></div>
+        <div><label>학년</label><input type="text" id="editGrade"></div>
+      </div>
+      <label>반</label><input type="text" id="editClass">
+      <div class="hint">반을 바꾸면 이 학생은 자동으로 새 반 그룹으로 이동합니다. 성적 기록은 그대로 유지됩니다.</div>
+      <button class="secondary" onclick="updateStudent()">학생정보 저장</button>
+      <div class="status" id="editStatus"></div>
+    </details>
+
+    <details>
+      <summary>+ 새 학생 등록</summary>
       <div class="row" style="margin-top:10px;">
         <div><label>이름</label><input type="text" id="newName"></div>
         <div><label>학년</label><input type="text" id="newGrade" placeholder="예: 중2"></div>
@@ -86,10 +109,7 @@
         <div><label>점수</label><input type="number" id="wScore"></div>
         <div><label>총점</label><input type="number" id="wTotal" value="100"></div>
       </div>
-      <div class="row">
-        <div><label>반평균</label><input type="number" id="wClassAvg" placeholder="반별 평균 점수"></div>
-        <div><label>등수</label><input type="text" id="wRank" placeholder="예: 3/24"></div>
-      </div>
+      <div class="hint">반평균과 등수는 같은 반·같은 단원 기록이 쌓이면 자동으로 계산되어 학생 페이지에 표시됩니다.</div>
     </div>
 
     <div id="monthlyForm" style="display:none;">
@@ -105,10 +125,7 @@
         <div><label>점수</label><input type="number" id="mScore"></div>
         <div><label>총점</label><input type="number" id="mTotal" value="100"></div>
       </div>
-      <div class="row">
-        <div><label>평균</label><input type="number" id="mAvg" placeholder="전체 평균 점수"></div>
-        <div><label>등수</label><input type="text" id="mRank" placeholder="예: 5/40"></div>
-      </div>
+      <div class="hint">회차명을 반 전체가 동일하게 입력해야 자동 비교가 정확합니다.</div>
     </div>
   </div>
 
@@ -122,10 +139,11 @@
   </div>
 
   <div class="card">
-    <h2>4. AI 종합 피드백 생성</h2>
-    <div class="hint">선택된 학생의 누적 기록을 바탕으로 피드백을 생성합니다. 생성 후 종합분석 시트에 자동 저장되며, 검수 후 학생 페이지에 노출됩니다.</div>
-    <button class="secondary" onclick="generateFeedback()">AI 피드백 생성</button>
-    <div class="status" id="feedbackStatus"></div>
+    <h2>4. 선생님 코멘트</h2>
+    <div class="hint">학생 페이지에 그대로 노출됩니다. 직접 작성해서 저장하세요.</div>
+    <textarea id="comment" placeholder="예: 이번 달 꾸준히 발전하고 있어요. 특히 도형 단원에서 강점을 보였습니다."></textarea>
+    <button class="secondary" onclick="saveComment()">코멘트 저장</button>
+    <div class="status" id="commentStatus"></div>
   </div>
 
 </div>
@@ -139,6 +157,7 @@ const STANDARD_TAGS = [
 ];
 let selectedTags = new Set();
 let currentTab = 'weekly';
+let ALL_STUDENTS = [];
 
 function renderTags(){
   const box = document.getElementById('tagList');
@@ -166,15 +185,56 @@ function switchTab(t){
 
 async function loadStudents(){
   const sel = document.getElementById('studentSelect');
+  const classSel = document.getElementById('classFilter');
   try {
     const res = await fetch(API_URL + '?action=getAllStudents');
-    const students = await res.json();
-    sel.innerHTML = students.map(s => '<option value="' + s.학생코드 + '">' + s.이름 + ' (' + s.학년 + '/' + s.반 + ')</option>').join('');
+    ALL_STUDENTS = await res.json();
+
+    const classes = Array.from(new Set(ALL_STUDENTS.map(s => s.반).filter(Boolean))).sort();
+    const currentClassFilter = classSel.value;
+    classSel.innerHTML = '<option value="">전체 반</option>' + classes.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+    classSel.value = currentClassFilter;
+
+    renderStudentOptions();
   } catch(e){
     sel.innerHTML = '<option value="">API_URL을 설정하세요</option>';
   }
 }
-loadStudents();
+
+function renderStudentOptions(){
+  const sel = document.getElementById('studentSelect');
+  const classFilter = document.getElementById('classFilter').value;
+  const filtered = classFilter ? ALL_STUDENTS.filter(s => s.반 === classFilter) : ALL_STUDENTS;
+  const prevValue = sel.value;
+  sel.innerHTML = filtered.map(s => '<option value="' + s.학생코드 + '">' + s.이름 + ' (' + s.학년 + '/' + s.반 + ')</option>').join('');
+  if(filtered.some(s => s.학생코드 === prevValue)) sel.value = prevValue;
+  onStudentChange();
+}
+
+document.getElementById('classFilter').addEventListener('change', renderStudentOptions);
+document.getElementById('studentSelect').addEventListener('change', onStudentChange);
+
+async function onStudentChange(){
+  const code = document.getElementById('studentSelect').value;
+  if(!code){
+    document.getElementById('editName').value = '';
+    document.getElementById('editGrade').value = '';
+    document.getElementById('editClass').value = '';
+    document.getElementById('comment').value = '';
+    return;
+  }
+  const s = ALL_STUDENTS.find(x => x.학생코드 === code);
+  if(s){
+    document.getElementById('editName').value = s.이름;
+    document.getElementById('editGrade').value = s.학년;
+    document.getElementById('editClass').value = s.반;
+  }
+  try{
+    const res = await fetch(API_URL + '?action=getStudentRecords&code=' + code);
+    const data = await res.json();
+    document.getElementById('comment').value = (data.analysis && data.analysis.코멘트) ? data.analysis.코멘트 : '';
+  } catch(e){}
+}
 
 async function addStudent(){
   const name = document.getElementById('newName').value;
@@ -187,7 +247,27 @@ async function addStudent(){
   });
   const result = await res.json();
   alert('등록 완료! 학생 코드: ' + result.code + '\n이 코드를 학생에게 전달하세요.');
+  document.getElementById('newName').value = '';
+  document.getElementById('newGrade').value = '';
+  document.getElementById('newClass').value = '';
   loadStudents();
+}
+
+async function updateStudent(){
+  const code = document.getElementById('studentSelect').value;
+  const status = document.getElementById('editStatus');
+  if(!code){ showStatus(status, '학생을 선택하세요', false); return; }
+  const name = document.getElementById('editName').value;
+  const grade = document.getElementById('editGrade').value;
+  const cls = document.getElementById('editClass').value;
+  if(!name){ showStatus(status, '이름을 입력하세요', false); return; }
+  const res = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({action:'updateStudent', data:{code, name, grade, class:cls}})
+  });
+  const result = await res.json();
+  if(result.success){ showStatus(status, '저장되었습니다. 성적 기록은 그대로 유지됩니다.', true); loadStudents(); }
+  else showStatus(status, result.error || '오류 발생', false);
 }
 
 async function deleteStudent(){
@@ -195,7 +275,7 @@ async function deleteStudent(){
   const code = sel.value;
   const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
   if(!code){ alert('삭제할 학생을 선택하세요'); return; }
-  if(!confirm(name + ' 학생을 삭제하시겠습니까?\n주간/월간 테스트 기록과 종합분석도 모두 함께 삭제되며, 되돌릴 수 없습니다.')){ return; }
+  if(!confirm(name + ' 학생을 삭제하시겠습니까?\n주간/월간 테스트 기록과 코멘트도 모두 함께 삭제되며, 되돌릴 수 없습니다.')){ return; }
   const res = await fetch(API_URL, {
     method:'POST',
     body: JSON.stringify({action:'deleteStudent', code})
@@ -218,7 +298,6 @@ async function saveTest(){
       code, date: document.getElementById('wDate').value, type: document.getElementById('wType').value,
       course: document.getElementById('wCourse').value, unit: document.getElementById('wUnit').value,
       score: document.getElementById('wScore').value, total: document.getElementById('wTotal').value,
-      classAvg: document.getElementById('wClassAvg').value, rank: document.getElementById('wRank').value,
       tags, memo
     }};
   } else {
@@ -226,7 +305,6 @@ async function saveTest(){
       code, round: document.getElementById('mRound').value, date: document.getElementById('mDate').value,
       course: document.getElementById('mCourse').value, scope: document.getElementById('mScope').value,
       score: document.getElementById('mScore').value, total: document.getElementById('mTotal').value,
-      avg: document.getElementById('mAvg').value, rank: document.getElementById('mRank').value,
       tags, memo
     }};
   }
@@ -236,26 +314,28 @@ async function saveTest(){
     const result = await res.json();
     if(result.success) showStatus(status, '저장되었습니다', true);
     else showStatus(status, result.error || '오류 발생', false);
-  } catch(e){ showStatus(status, 'API_URL을 설정하세요', false); }
+  } catch(e){ showStatus(status, '저장 중 오류가 발생했습니다', false); }
 }
 
-async function generateFeedback(){
+async function saveComment(){
   const code = document.getElementById('studentSelect').value;
-  const status = document.getElementById('feedbackStatus');
+  const status = document.getElementById('commentStatus');
   if(!code){ showStatus(status, '학생을 선택하세요', false); return; }
-  showStatus(status, '생성 중...', true);
+  const comment = document.getElementById('comment').value;
   try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({action:'generateFeedback', code}) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({action:'saveComment', data:{code, comment}}) });
     const result = await res.json();
-    if(result.success) showStatus(status, result.feedback, true);
+    if(result.success) showStatus(status, '코멘트가 저장되었습니다', true);
     else showStatus(status, result.error || '오류 발생', false);
-  } catch(e){ showStatus(status, 'API_URL을 설정하세요', false); }
+  } catch(e){ showStatus(status, '저장 중 오류가 발생했습니다', false); }
 }
 
 function showStatus(el, msg, ok){
   el.textContent = msg;
   el.className = 'status ' + (ok ? 'ok' : 'err');
 }
+
+loadStudents();
 </script>
 </body>
 </html>

@@ -54,12 +54,12 @@
 
     <div class="card">
       <h2>주간테스트</h2>
-      <table id="weeklyTable"><thead><tr><th>날짜</th><th>유형</th><th>점수</th><th>특징</th></tr></thead><tbody></tbody></table>
+      <table id="weeklyTable"><thead><tr><th>날짜</th><th>유형</th><th>단원</th><th>점수</th><th>반평균</th><th>등수</th><th>특징</th></tr></thead><tbody></tbody></table>
     </div>
 
     <div class="card">
       <h2>월간테스트</h2>
-      <table id="monthlyTable"><thead><tr><th>회차</th><th>날짜</th><th>점수</th><th>등급</th></tr></thead><tbody></tbody></table>
+      <table id="monthlyTable"><thead><tr><th>회차</th><th>날짜</th><th>범위</th><th>점수</th><th>평균</th><th>등수</th></tr></thead><tbody></tbody></table>
     </div>
 
     <div class="card">
@@ -94,10 +94,10 @@ function renderData(data){
   document.getElementById('studentMeta').textContent = data.student.학년 + ' · ' + data.student.반;
 
   const wBody = document.querySelector('#weeklyTable tbody');
-  wBody.innerHTML = data.weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="4" class="empty">기록 없음</td></tr>';
+  wBody.innerHTML = data.weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td>' + (r.시험단원||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="7" class="empty">기록 없음</td></tr>';
 
   const mBody = document.querySelector('#monthlyTable tbody');
-  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.등급||'-') + '</td></tr>').join('') || '<tr><td colspan="4" class="empty">기록 없음</td></tr>';
+  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
 
   const fbBox = document.getElementById('feedbackBox');
   if(data.analysis && data.analysis.AI피드백){

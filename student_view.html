@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CMS 서초영재관 - 내 성적</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
   :root{
     --navy:#1B2A4A; --gold:#C9A24B; --coral:#D85A30;
@@ -13,7 +14,7 @@
   body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
   header{background:var(--navy);color:#fff;padding:20px 24px;text-align:center;}
   header h1{margin:0;font-size:18px;font-weight:600;}
-  .wrap{max-width:600px;margin:0 auto;padding:24px 16px 60px;}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 16px 60px;}
   .login{background:#fff;border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-top:40px;}
   .login input{width:100%;padding:14px;font-size:18px;letter-spacing:4px;text-align:center;
     border:1px solid var(--border);border-radius:8px;margin:14px 0;text-transform:uppercase;}
@@ -33,6 +34,7 @@
     font-size:14px;line-height:1.7;color:#4A3C10;}
   .empty{color:var(--muted);font-size:13px;padding:10px 0;}
   #app{display:none;}
+  canvas{max-height:260px;}
 </style>
 </head>
 <body>
@@ -50,6 +52,12 @@
     <div class="card">
       <div class="greet" id="studentName"></div>
       <div class="sub" id="studentMeta"></div>
+    </div>
+
+    <div class="card">
+      <h2>성적 추이</h2>
+      <canvas id="trendChart"></canvas>
+      <div class="hint empty" id="chartEmpty" style="display:none;">그래프를 그릴 기록이 아직 없습니다.</div>
     </div>
 
     <div class="card">
@@ -71,9 +79,10 @@
 
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
+let chartInstance = null;
 
-async function login(){
-  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+async function login(codeOverride){
+  const code = (codeOverride || document.getElementById('codeInput').value).trim().toUpperCase();
   const err = document.getElementById('loginError');
   if(!code){ err.textContent = '코드를 입력하세요'; return; }
   err.textContent = '조회 중...';
@@ -85,7 +94,7 @@ async function login(){
     document.getElementById('loginBox').style.display = 'none';
     document.getElementById('app').style.display = 'block';
   } catch(e){
-    err.textContent = 'API_URL이 설정되지 않았습니다';
+    err.textContent = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
   }
 }
 
@@ -97,12 +106,55 @@ function renderData(data){
   wBody.innerHTML = data.weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td>' + (r.시험단원||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="7" class="empty">기록 없음</td></tr>';
 
   const mBody = document.querySelector('#monthlyTable tbody');
-  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
+  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
 
   const fbBox = document.getElementById('feedbackBox');
-  if(data.analysis && data.analysis.AI피드백){
-    fbBox.innerHTML = '<div class="feedback">' + data.analysis.AI피드백 + '</div>';
+  if(data.analysis && data.analysis.코멘트){
+    fbBox.innerHTML = '<div class="feedback">' + data.analysis.코멘트 + '</div>';
+  } else {
+    fbBox.innerHTML = '<div class="empty">아직 등록된 코멘트가 없습니다.</div>';
   }
+
+  renderChart(data);
+}
+
+function renderChart(data){
+  const weekly = data.weekly.slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+  const monthly = data.monthly.slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+
+  if(weekly.length === 0 && monthly.length === 0){
+    document.getElementById('chartEmpty').style.display = 'block';
+    document.getElementById('trendChart').style.display = 'none';
+    return;
+  }
+
+  const labels = weekly.map(r => fmtDate(r.날짜) + ' ' + (r.시험단원||''));
+  const scores = weekly.map(r => Number(r.점수));
+  const classAvgs = weekly.map(r => r.반평균 ? Number(r.반평균) : null);
+
+  const monthlyLabels = monthly.map(r => r.회차);
+  const monthlyScores = monthly.map(r => Number(r.점수));
+  const monthlyAvgs = monthly.map(r => r.반평균 ? Number(r.반평균) : null);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.length ? labels : monthlyLabels,
+      datasets: [
+        weekly.length ? { label: '내 점수 (주간)', data: scores, borderColor: '#D85A30', backgroundColor: '#D85A30', tension: 0.2 } : null,
+        weekly.length ? { label: '반평균 (주간)', data: classAvgs, borderColor: '#C9A24B', backgroundColor: '#C9A24B', borderDash: [5,5], tension: 0.2 } : null,
+        monthly.length ? { label: '내 점수 (월간)', data: monthlyScores, borderColor: '#1B2A4A', backgroundColor: '#1B2A4A', tension: 0.2 } : null,
+        monthly.length ? { label: '반평균 (월간)', data: monthlyAvgs, borderColor: '#6B6E76', backgroundColor: '#6B6E76', borderDash: [5,5], tension: 0.2 } : null
+      ].filter(Boolean)
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: false } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+    }
+  });
 }
 
 function tagsHtml(tagStr){
@@ -119,6 +171,12 @@ function fmtDate(d){
 document.getElementById('codeInput').addEventListener('keypress', e => {
   if(e.key === 'Enter') login();
 });
+
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if(urlCode){
+  document.getElementById('codeInput').value = urlCode;
+  login(urlCode);
+}
 </script>
 </body>
 </html>

@@ -141,10 +141,8 @@ function setTypeFilter(t){
 }
 
 function setPeriod(){
-  const s = document.getElementById('periodStart').value;
-  const e = document.getElementById('periodEnd').value;
-  periodStart = s ? new Date(s) : null;
-  periodEnd = e ? new Date(e) : null;
+  periodStart = document.getElementById('periodStart').value || null;
+  periodEnd = document.getElementById('periodEnd').value || null;
   renderAll();
 }
 
@@ -158,9 +156,10 @@ function resetPeriod(){
 
 function inPeriod(dateStr){
   if(!periodStart && !periodEnd) return true;
-  const d = new Date(dateStr);
-  if(periodStart && d < periodStart) return false;
-  if(periodEnd && d > periodEnd) return false;
+  if(!dateStr) return false;
+  const dOnly = new Date(dateStr).toISOString().slice(0,10);
+  if(periodStart && dOnly < periodStart) return false;
+  if(periodEnd && dOnly > periodEnd) return false;
   return true;
 }
 

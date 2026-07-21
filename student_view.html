@@ -40,6 +40,11 @@
   .commentItem:last-child{border-bottom:none;}
   .commentItem .badge{font-size:12px;color:var(--navy);font-weight:600;margin-bottom:4px;}
   .commentItem .text{font-size:14px;line-height:1.6;color:var(--text);}
+  .periodRow{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .periodRow label{font-size:12px;color:var(--muted);}
+  .periodRow input[type=date]{flex:1;min-width:120px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;}
+  .periodRow button{width:auto;margin:0;padding:8px 12px;font-size:12px;background:#EFEDE5;color:var(--text);}
+  .periodHint{font-size:11px;color:var(--muted);margin:-8px 0 14px;}
 </style>
 </head>
 <body>
@@ -61,11 +66,22 @@
 
     <div class="card">
       <h2>성적 추이</h2>
+
       <div class="tabs">
         <div class="tab active" data-type="전체" onclick="setTypeFilter('전체')">통합</div>
         <div class="tab" data-type="기본" onclick="setTypeFilter('기본')">기본</div>
         <div class="tab" data-type="심화" onclick="setTypeFilter('심화')">심화</div>
       </div>
+
+      <div class="periodRow">
+        <label>기간</label>
+        <input type="date" id="periodStart" onchange="setPeriod()">
+        <span style="color:var(--muted);">~</span>
+        <input type="date" id="periodEnd" onchange="setPeriod()">
+        <button onclick="resetPeriod()">전체보기</button>
+      </div>
+      <div class="periodHint">기간을 지정하지 않으면 지금까지의 전체 기록이 누적으로 표시됩니다.</div>
+
       <canvas id="trendChart"></canvas>
       <div class="empty" id="chartEmpty" style="display:none;">그래프를 그릴 기록이 아직 없습니다.</div>
     </div>
@@ -97,6 +113,8 @@ let chartInstance = null;
 let currentData = null;
 let typeFilter = '전체';
 let commentTab = 'weekly';
+let periodStart = null;
+let periodEnd = null;
 
 async function login(codeOverride){
   const code = (codeOverride || document.getElementById('codeInput').value).trim().toUpperCase();
@@ -122,6 +140,30 @@ function setTypeFilter(t){
   renderAll();
 }
 
+function setPeriod(){
+  const s = document.getElementById('periodStart').value;
+  const e = document.getElementById('periodEnd').value;
+  periodStart = s ? new Date(s) : null;
+  periodEnd = e ? new Date(e) : null;
+  renderAll();
+}
+
+function resetPeriod(){
+  document.getElementById('periodStart').value = '';
+  document.getElementById('periodEnd').value = '';
+  periodStart = null;
+  periodEnd = null;
+  renderAll();
+}
+
+function inPeriod(dateStr){
+  if(!periodStart && !periodEnd) return true;
+  const d = new Date(dateStr);
+  if(periodStart && d < periodStart) return false;
+  if(periodEnd && d > periodEnd) return false;
+  return true;
+}
+
 function setCommentTab(t){
   commentTab = t;
   document.querySelectorAll('.tabs .tab[data-c]').forEach(el => el.classList.toggle('active', el.getAttribute('data-c')===t));
@@ -130,8 +172,11 @@ function setCommentTab(t){
 
 function filteredWeekly(){
   if(!currentData) return [];
-  if(typeFilter === '전체') return currentData.weekly;
-  return currentData.weekly.filter(r => r.유형 === typeFilter);
+  return currentData.weekly.filter(r => (typeFilter === '전체' || r.유형 === typeFilter) && inPeriod(r.날짜));
+}
+function filteredMonthly(){
+  if(!currentData) return [];
+  return currentData.monthly.filter(r => inPeriod(r.날짜));
 }
 
 function renderAll(){
@@ -143,8 +188,9 @@ function renderAll(){
   const wBody = document.querySelector('#weeklyTable tbody');
   wBody.innerHTML = weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td>' + (r.시험단원||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="7" class="empty">기록 없음</td></tr>';
 
+  const monthly = filteredMonthly();
   const mBody = document.querySelector('#monthlyTable tbody');
-  mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
+  mBody.innerHTML = monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
 
   renderChart();
   renderComments();
@@ -163,7 +209,7 @@ function renderComments(){
 
 function renderChart(){
   const weekly = filteredWeekly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
-  const monthly = (currentData ? currentData.monthly : []).slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+  const monthly = filteredMonthly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
 
   if(weekly.length === 0 && monthly.length === 0){
     document.getElementById('chartEmpty').style.display = 'block';

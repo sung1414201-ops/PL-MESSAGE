@@ -30,11 +30,16 @@
   .score{font-weight:600;}
   .tagpill{display:inline-block;background:#F0EEE4;color:var(--navy);border-radius:12px;
     padding:2px 8px;font-size:11px;margin:2px 2px 0 0;}
-  .feedback{background:#FBF6EC;border:1px solid var(--gold);border-radius:8px;padding:14px;
-    font-size:14px;line-height:1.7;color:#4A3C10;}
   .empty{color:var(--muted);font-size:13px;padding:10px 0;}
   #app{display:none;}
   canvas{max-height:260px;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;}
+  .tab{flex:1;text-align:center;padding:8px;border-radius:8px;background:#EFEDE5;color:var(--muted);font-size:13px;cursor:pointer;border:1px solid transparent;}
+  .tab.active{background:var(--navy);color:#fff;}
+  .commentItem{border-bottom:1px solid var(--border);padding:12px 0;}
+  .commentItem:last-child{border-bottom:none;}
+  .commentItem .badge{font-size:12px;color:var(--navy);font-weight:600;margin-bottom:4px;}
+  .commentItem .text{font-size:14px;line-height:1.6;color:var(--text);}
 </style>
 </head>
 <body>
@@ -56,8 +61,13 @@
 
     <div class="card">
       <h2>성적 추이</h2>
+      <div class="tabs">
+        <div class="tab active" data-type="전체" onclick="setTypeFilter('전체')">통합</div>
+        <div class="tab" data-type="기본" onclick="setTypeFilter('기본')">기본</div>
+        <div class="tab" data-type="심화" onclick="setTypeFilter('심화')">심화</div>
+      </div>
       <canvas id="trendChart"></canvas>
-      <div class="hint empty" id="chartEmpty" style="display:none;">그래프를 그릴 기록이 아직 없습니다.</div>
+      <div class="empty" id="chartEmpty" style="display:none;">그래프를 그릴 기록이 아직 없습니다.</div>
     </div>
 
     <div class="card">
@@ -72,7 +82,11 @@
 
     <div class="card">
       <h2>선생님 코멘트</h2>
-      <div id="feedbackBox"><div class="empty">아직 등록된 코멘트가 없습니다.</div></div>
+      <div class="tabs">
+        <div class="tab active" data-c="weekly" onclick="setCommentTab('weekly')">주간</div>
+        <div class="tab" data-c="monthly" onclick="setCommentTab('monthly')">월간</div>
+      </div>
+      <div id="commentBox"></div>
     </div>
   </div>
 </div>
@@ -80,6 +94,9 @@
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
 let chartInstance = null;
+let currentData = null;
+let typeFilter = '전체';
+let commentTab = 'weekly';
 
 async function login(codeOverride){
   const code = (codeOverride || document.getElementById('codeInput').value).trim().toUpperCase();
@@ -90,7 +107,8 @@ async function login(codeOverride){
     const res = await fetch(API_URL + '?action=getStudentRecords&code=' + code);
     const data = await res.json();
     if(data.error){ err.textContent = data.error; return; }
-    renderData(data);
+    currentData = data;
+    renderAll();
     document.getElementById('loginBox').style.display = 'none';
     document.getElementById('app').style.display = 'block';
   } catch(e){
@@ -98,35 +116,62 @@ async function login(codeOverride){
   }
 }
 
-function renderData(data){
+function setTypeFilter(t){
+  typeFilter = t;
+  document.querySelectorAll('.tabs .tab[data-type]').forEach(el => el.classList.toggle('active', el.getAttribute('data-type')===t));
+  renderAll();
+}
+
+function setCommentTab(t){
+  commentTab = t;
+  document.querySelectorAll('.tabs .tab[data-c]').forEach(el => el.classList.toggle('active', el.getAttribute('data-c')===t));
+  renderComments();
+}
+
+function filteredWeekly(){
+  if(!currentData) return [];
+  if(typeFilter === '전체') return currentData.weekly;
+  return currentData.weekly.filter(r => r.유형 === typeFilter);
+}
+
+function renderAll(){
+  const data = currentData;
   document.getElementById('studentName').textContent = data.student.이름 + ' 학생';
   document.getElementById('studentMeta').textContent = data.student.학년 + ' · ' + data.student.반;
 
+  const weekly = filteredWeekly();
   const wBody = document.querySelector('#weeklyTable tbody');
-  wBody.innerHTML = data.weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td>' + (r.시험단원||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="7" class="empty">기록 없음</td></tr>';
+  wBody.innerHTML = weekly.slice().reverse().map(r => '<tr><td>' + fmtDate(r.날짜) + '</td><td>' + r.유형 + '</td><td>' + (r.시험단원||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td><td>' + tagsHtml(r.태그) + '</td></tr>').join('') || '<tr><td colspan="7" class="empty">기록 없음</td></tr>';
 
   const mBody = document.querySelector('#monthlyTable tbody');
   mBody.innerHTML = data.monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
 
-  const fbBox = document.getElementById('feedbackBox');
-  if(data.analysis && data.analysis.코멘트){
-    fbBox.innerHTML = '<div class="feedback">' + data.analysis.코멘트 + '</div>';
-  } else {
-    fbBox.innerHTML = '<div class="empty">아직 등록된 코멘트가 없습니다.</div>';
-  }
-
-  renderChart(data);
+  renderChart();
+  renderComments();
 }
 
-function renderChart(data){
-  const weekly = data.weekly.slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
-  const monthly = data.monthly.slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+function renderComments(){
+  const box = document.getElementById('commentBox');
+  const source = commentTab === 'weekly' ? (currentData ? currentData.weekly : []) : (currentData ? currentData.monthly : []);
+  const withComments = source.filter(r => r.메모).slice().sort((a,b) => new Date(b.날짜) - new Date(a.날짜));
+  if(withComments.length === 0){ box.innerHTML = '<div class="empty">아직 등록된 코멘트가 없습니다.</div>'; return; }
+  box.innerHTML = withComments.map(r => {
+    const badge = commentTab === 'weekly' ? (fmtDate(r.날짜) + ' · ' + r.유형 + ' · ' + (r.시험단원||'')) : (r.회차 + ' · ' + fmtDate(r.날짜));
+    return '<div class="commentItem"><div class="badge">' + badge + '</div><div class="text">' + r.메모 + '</div></div>';
+  }).join('');
+}
+
+function renderChart(){
+  const weekly = filteredWeekly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+  const monthly = (currentData ? currentData.monthly : []).slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
 
   if(weekly.length === 0 && monthly.length === 0){
     document.getElementById('chartEmpty').style.display = 'block';
     document.getElementById('trendChart').style.display = 'none';
     return;
   }
+  document.getElementById('chartEmpty').style.display = 'none';
+  document.getElementById('trendChart').style.display = 'block';
 
   const labels = weekly.map(r => fmtDate(r.날짜) + ' ' + (r.시험단원||''));
   const scores = weekly.map(r => Number(r.점수));

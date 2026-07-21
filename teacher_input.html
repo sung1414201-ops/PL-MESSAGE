@@ -23,7 +23,7 @@
     width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
     font-size:14px;background:#fff;color:var(--text);
   }
-  textarea{resize:vertical;min-height:80px;}
+  textarea{resize:vertical;min-height:70px;}
   .row{display:flex;gap:10px;}
   .row > *{flex:1;}
   .tabs{display:flex;gap:8px;margin-bottom:16px;}
@@ -36,12 +36,21 @@
   button:hover{opacity:0.92;}
   button.secondary{background:var(--navy);}
   button.danger{background:#A3312F;}
+  button.ghost{background:#EFEDE5;color:var(--text);}
   .status{font-size:13px;margin-top:10px;padding:10px;border-radius:8px;display:none;}
   .status.ok{display:block;background:#E9F5EC;color:#276B3C;}
   .status.err{display:block;background:#FBEAEA;color:#A3312F;}
   .hint{font-size:12px;color:var(--muted);margin-top:4px;}
   details{margin-top:10px;}
   summary{cursor:pointer;font-size:13px;color:var(--navy);font-weight:600;}
+  .recordRow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;}
+  .recordRow:last-child{border-bottom:none;}
+  .recordInfo{flex:1;}
+  .recordInfo .main{font-weight:600;}
+  .recordInfo .sub{color:var(--muted);font-size:12px;margin-top:2px;}
+  .recordBtns{display:flex;gap:6px;}
+  .recordBtns button{width:auto;margin:0;padding:6px 10px;font-size:12px;}
+  .editBanner{background:#FFF6E5;border:1px solid var(--gold);border-radius:8px;padding:10px;font-size:13px;margin-bottom:10px;display:none;}
 </style>
 </head>
 <body>
@@ -94,6 +103,8 @@
       <div class="tab" onclick="switchTab('monthly')" id="tabMonthly">월간테스트</div>
     </div>
 
+    <div class="editBanner" id="editBanner">기존 기록을 수정하는 중입니다. <span onclick="cancelEdit()" style="text-decoration:underline;cursor:pointer;">취소</span></div>
+
     <div id="weeklyForm">
       <div class="row">
         <div><label>날짜</label><input type="date" id="wDate"></div>
@@ -132,18 +143,16 @@
   <div class="card">
     <h2>3. 특징 태그 (표준 10종, 복수 선택)</h2>
     <div class="tags" id="tagList"></div>
-    <label>추가 메모 (선택)</label>
-    <textarea id="memo" placeholder="자유 서술 메모"></textarea>
-    <button onclick="saveTest()">기록 저장</button>
+    <label>코멘트 (학생 페이지에 그대로 노출됩니다)</label>
+    <textarea id="memo" placeholder="예: 이번 단원 계산 실수가 잦았어요. 검산 습관을 길러봅시다."></textarea>
+    <button id="saveBtn" onclick="saveTest()">기록 저장</button>
     <div class="status" id="saveStatus"></div>
   </div>
 
   <div class="card">
-    <h2>4. 선생님 코멘트</h2>
-    <div class="hint">학생 페이지에 그대로 노출됩니다. 직접 작성해서 저장하세요.</div>
-    <textarea id="comment" placeholder="예: 이번 달 꾸준히 발전하고 있어요. 특히 도형 단원에서 강점을 보였습니다."></textarea>
-    <button class="secondary" onclick="saveComment()">코멘트 저장</button>
-    <div class="status" id="commentStatus"></div>
+    <h2>4. 이전 기록 관리</h2>
+    <div class="hint">수정하려면 [수정]을 눌러 내용을 불러온 뒤 위에서 고쳐 저장하세요.</div>
+    <div id="recordsList"></div>
   </div>
 
 </div>
@@ -158,6 +167,8 @@ const STANDARD_TAGS = [
 let selectedTags = new Set();
 let currentTab = 'weekly';
 let ALL_STUDENTS = [];
+let currentRecords = { weekly: [], monthly: [] };
+let editingId = null;
 
 function renderTags(){
   const box = document.getElementById('tagList');
@@ -176,11 +187,13 @@ function renderTags(){
 renderTags();
 
 function switchTab(t){
+  if(editingId){ cancelEdit(); }
   currentTab = t;
   document.getElementById('tabWeekly').classList.toggle('active', t==='weekly');
   document.getElementById('tabMonthly').classList.toggle('active', t==='monthly');
   document.getElementById('weeklyForm').style.display = t==='weekly' ? 'block':'none';
   document.getElementById('monthlyForm').style.display = t==='monthly' ? 'block':'none';
+  renderRecordsList();
 }
 
 async function loadStudents(){
@@ -215,12 +228,14 @@ document.getElementById('classFilter').addEventListener('change', renderStudentO
 document.getElementById('studentSelect').addEventListener('change', onStudentChange);
 
 async function onStudentChange(){
+  cancelEdit();
   const code = document.getElementById('studentSelect').value;
   if(!code){
     document.getElementById('editName').value = '';
     document.getElementById('editGrade').value = '';
     document.getElementById('editClass').value = '';
-    document.getElementById('comment').value = '';
+    currentRecords = { weekly: [], monthly: [] };
+    renderRecordsList();
     return;
   }
   const s = ALL_STUDENTS.find(x => x.학생코드 === code);
@@ -232,8 +247,96 @@ async function onStudentChange(){
   try{
     const res = await fetch(API_URL + '?action=getStudentRecords&code=' + code);
     const data = await res.json();
-    document.getElementById('comment').value = (data.analysis && data.analysis.코멘트) ? data.analysis.코멘트 : '';
-  } catch(e){}
+    currentRecords.weekly = data.weekly || [];
+    currentRecords.monthly = data.monthly || [];
+  } catch(e){
+    currentRecords = { weekly: [], monthly: [] };
+  }
+  renderRecordsList();
+}
+
+function renderRecordsList(){
+  const box = document.getElementById('recordsList');
+  const list = currentTab === 'weekly' ? currentRecords.weekly : currentRecords.monthly;
+  if(!list || list.length === 0){ box.innerHTML = '<div class="hint">기록이 없습니다.</div>'; return; }
+  const sorted = list.slice().reverse();
+  box.innerHTML = sorted.map(r => {
+    const id = r.기록ID;
+    const main = currentTab === 'weekly'
+      ? fmtDate(r.날짜) + ' · ' + r.유형 + ' · ' + (r.시험단원||'-') + ' · ' + r.점수 + '/' + r.총점
+      : r.회차 + ' · ' + fmtDate(r.날짜) + ' · ' + (r.시험범위||'-') + ' · ' + r.점수 + '/' + r.총점;
+    const sub = r.메모 ? r.메모 : '';
+    return '<div class="recordRow">' +
+      '<div class="recordInfo"><div class="main">' + main + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
+      '<div class="recordBtns">' +
+        '<button class="ghost" onclick="editRecord(\'' + id + '\')">수정</button>' +
+        '<button class="danger" onclick="deleteRecord(\'' + id + '\')">삭제</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function fmtDate(d){
+  if(!d) return '-';
+  const date = new Date(d);
+  if(isNaN(date)) return d;
+  return (date.getMonth()+1) + '/' + date.getDate();
+}
+function toDateInput(d){
+  if(!d) return '';
+  const date = new Date(d);
+  if(isNaN(date)) return '';
+  const mm = String(date.getMonth()+1).padStart(2,'0');
+  const dd = String(date.getDate()).padStart(2,'0');
+  return date.getFullYear() + '-' + mm + '-' + dd;
+}
+
+function editRecord(id){
+  const list = currentTab === 'weekly' ? currentRecords.weekly : currentRecords.monthly;
+  const r = list.find(x => x.기록ID === id);
+  if(!r) return;
+  editingId = id;
+  document.getElementById('editBanner').style.display = 'block';
+  document.getElementById('saveBtn').textContent = '수정 내용 저장';
+
+  selectedTags = new Set((r.태그||'').split(',').filter(Boolean));
+  renderTags();
+  document.querySelectorAll('.tag').forEach(el => { if(selectedTags.has(el.textContent)) el.classList.add('selected'); });
+  document.getElementById('memo').value = r.메모 || '';
+
+  if(currentTab === 'weekly'){
+    document.getElementById('wDate').value = toDateInput(r.날짜);
+    document.getElementById('wType').value = r.유형 || '기본';
+    document.getElementById('wCourse').value = r.과정 || '';
+    document.getElementById('wUnit').value = r.시험단원 || '';
+    document.getElementById('wScore').value = r.점수 || '';
+    document.getElementById('wTotal').value = r.총점 || 100;
+  } else {
+    document.getElementById('mRound').value = r.회차 || '';
+    document.getElementById('mDate').value = toDateInput(r.날짜);
+    document.getElementById('mCourse').value = r.과정 || '';
+    document.getElementById('mScope').value = r.시험범위 || '';
+    document.getElementById('mScore').value = r.점수 || '';
+    document.getElementById('mTotal').value = r.총점 || 100;
+  }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelEdit(){
+  editingId = null;
+  document.getElementById('editBanner').style.display = 'none';
+  document.getElementById('saveBtn').textContent = '기록 저장';
+  selectedTags = new Set();
+  renderTags();
+  document.getElementById('memo').value = '';
+}
+
+async function deleteRecord(id){
+  if(!confirm('이 기록을 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+  const action = currentTab === 'weekly' ? 'deleteWeekly' : 'deleteMonthly';
+  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({action, id}) });
+  const result = await res.json();
+  if(result.success){ if(editingId === id) cancelEdit(); onStudentChange(); }
+  else alert(result.error || '삭제 중 오류가 발생했습니다');
 }
 
 async function addStudent(){
@@ -275,7 +378,7 @@ async function deleteStudent(){
   const code = sel.value;
   const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
   if(!code){ alert('삭제할 학생을 선택하세요'); return; }
-  if(!confirm(name + ' 학생을 삭제하시겠습니까?\n주간/월간 테스트 기록과 코멘트도 모두 함께 삭제되며, 되돌릴 수 없습니다.')){ return; }
+  if(!confirm(name + ' 학생을 삭제하시겠습니까?\n주간/월간 테스트 기록도 모두 함께 삭제되며, 되돌릴 수 없습니다.')){ return; }
   const res = await fetch(API_URL, {
     method:'POST',
     body: JSON.stringify({action:'deleteStudent', code})
@@ -294,38 +397,33 @@ async function saveTest(){
 
   let payload;
   if(currentTab === 'weekly'){
-    payload = { action:'saveWeekly', data:{
+    const data = {
       code, date: document.getElementById('wDate').value, type: document.getElementById('wType').value,
       course: document.getElementById('wCourse').value, unit: document.getElementById('wUnit').value,
       score: document.getElementById('wScore').value, total: document.getElementById('wTotal').value,
       tags, memo
-    }};
+    };
+    if(editingId){ data.id = editingId; payload = { action:'updateWeekly', data }; }
+    else payload = { action:'saveWeekly', data };
   } else {
-    payload = { action:'saveMonthly', data:{
+    const data = {
       code, round: document.getElementById('mRound').value, date: document.getElementById('mDate').value,
       course: document.getElementById('mCourse').value, scope: document.getElementById('mScope').value,
       score: document.getElementById('mScore').value, total: document.getElementById('mTotal').value,
       tags, memo
-    }};
+    };
+    if(editingId){ data.id = editingId; payload = { action:'updateMonthly', data }; }
+    else payload = { action:'saveMonthly', data };
   }
 
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(payload) });
     const result = await res.json();
-    if(result.success) showStatus(status, '저장되었습니다', true);
-    else showStatus(status, result.error || '오류 발생', false);
-  } catch(e){ showStatus(status, '저장 중 오류가 발생했습니다', false); }
-}
-
-async function saveComment(){
-  const code = document.getElementById('studentSelect').value;
-  const status = document.getElementById('commentStatus');
-  if(!code){ showStatus(status, '학생을 선택하세요', false); return; }
-  const comment = document.getElementById('comment').value;
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({action:'saveComment', data:{code, comment}}) });
-    const result = await res.json();
-    if(result.success) showStatus(status, '코멘트가 저장되었습니다', true);
+    if(result.success){
+      showStatus(status, '저장되었습니다', true);
+      cancelEdit();
+      onStudentChange();
+    }
     else showStatus(status, result.error || '오류 발생', false);
   } catch(e){ showStatus(status, '저장 중 오류가 발생했습니다', false); }
 }

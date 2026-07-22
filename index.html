@@ -463,6 +463,634 @@ function generateMessage(student, round){
   const course = courses.find(c => c.id === currentCourseId);
   const comment = (student.comments && student.comments[round]) || '';
   return [
+    `[방학특강 일일TEST - ${course ? course.name : ''}]`,
+    `${round}회차 테스트 - ${student.name}`,
+    ``,
+    `* 단원명 : ${topics[round] || ''}`,
+    `* 점수 : ${score} / 50 [평균 ${formatAvg(avg)}]`,
+    ``,
+    ` - 담당 : ${comment} TR`
+  ].join('\n');
+}
+function copyMessage(studentId, round, btn){
+  const s = students.find(x => x.id === studentId);
+  if(!s) return;
+  const text = generateMessage(s, round);
+  if(!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '복사됨 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1300);
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  const app = document.getElementById('app');
+  let html = `
+    <div class="hero">
+      <div>
+        <h1>🎨 특강 문자발송</h1>
+        <div class="sub">성적만 입력하면 학생별 문자가 자동으로 만들어져요</div>
+      </div>
+    </div>
+    <div class="course-tabs">
+      ${courses.map(c => `
+        <div class="course-tab ${c.id === currentCourseId ? 'active' : ''}" onclick="selectCourse('${c.id}')">
+          ${escapeHtml(c.name)}
+          <span class="x" onclick="deleteCourse('${c.id}', event)">✕</span>
+        </div>`).join('')}
+      <button class="course-tab-add" onclick="addCourse()">＋ 새 특강</button>
+    </div>
+    <button class="seed-btn" onclick="importSeedCourses()">📥 7월 방학특강 명단 불러오기 (전체 21개)</button>
+  `;
+
+  if(!currentCourseId){
+    html += `<div class="no-course">아직 특강이 없어요.<br>위에서 "＋ 새 특강"을 눌러 시작해보세요.</div>`;
+    app.innerHTML = html;
+    return;
+  }
+
+  const currentCourse = courses.find(c => c.id === currentCourseId);
+  html += `
+    <div class="course-info-bar">
+      ${editingCourseInfo ? `
+        <div class="course-edit-form">
+          <input id="editCourseName" placeholder="특강 이름" value="${escapeHtml(currentCourse.name||'')}">
+          <input id="editCourseDay" placeholder="요일 (예: 월수금)" value="${escapeHtml(currentCourse.day||'')}">
+          <input id="editCourseTime" placeholder="시간 (예: 12:30~16:30)" value="${escapeHtml(currentCourse.time||'')}">
+          <input id="editCourseTeacher" placeholder="담당 (예: 김OO T)" value="${escapeHtml(currentCourse.teacher||'')}">
+          <button onclick="saveCourseInfo()">저장</button>
+        </div>
+      ` : `
+        <span>📅 <b>${escapeHtml(currentCourse.day || '요일 미입력')}</b></span>
+        <span>🕐 <b>${escapeHtml(currentCourse.time || '시간 미입력')}</b></span>
+        <span>👤 <b>${escapeHtml(currentCourse.teacher || '담당 미입력')}</b></span>
+        <button class="edit-link" onclick="toggleCourseInfoEdit()">✏️ 정보 수정</button>
+      `}
+    </div>
+  `;
+
+  html += `
+    <div class="topics-row">
+      ${ROUNDS.map(r => `
+        <div class="topic-card" style="background:var(--${ROUND_COLORS[r]}-soft);">
+          <span class="rlabel" style="background:var(--${ROUND_COLORS[r]});">${r}회</span>
+          <input type="text" placeholder="단원명" value="${escapeHtml(topics[r]||'')}" onchange="updateTopic(${r}, this.value)">
+        </div>`).join('')}
+    </div>
+
+    <div class="add-student-bar">
+      <input type="text" id="newStudentName" placeholder="학생 이름 입력" onkeydown="if(event.key==='Enter') addStudent()">
+      <button onclick="addStudent()">학생 추가</button>
+    </div>
+
+    <div class="grade-card">
+      <table class="grade-table" id="gradeTable"></table>
+    </div>
+  `;
+
+  app.innerHTML = html;
+  renderTableOnly();
+}
+
+function renderTableOnly(){
+  const table = document.getElementById('gradeTable');
+  if(!table) return;
+
+  let thead = `<thead><tr>
+    <th class="name-col">학생</th>
+    ${ROUNDS.map(r => `<th style="color:${ROUND_HEX[r]};">${r}회</th>`).join('')}
+    <th>문자</th>
+  </tr></thead>`;
+
+  let bodyRows = '';
+  if(students.length === 0){
+    bodyRows = `<tr><td colspan="7" class="empty-roster">아직 등록된 학생이 없어요. 위에서 이름을 입력해 추가해보세요.</td></tr>`;
+  }else{
+    students.forEach(s => {
+      const filledRounds = ROUNDS.filter(r => s.scores[r] !== undefined && s.scores[r] !== null && s.scores[r] !== '');
+      bodyRows += `
+        <tr>
+          <td class="name-cell">
+            <div class="nm" onclick="toggleExpand('${s.id}')">${escapeHtml(s.name)} ${filledRounds.length ? '📩' : ''}</div>
+          </td>
+          ${ROUNDS.map(r => `
+            <td class="${ROUND_COLORS[r]}-cell">
+              <input type="number" class="score-input" value="${s.scores[r] !== undefined && s.scores[r] !== null ? s.scores[r] : ''}"
+                placeholder="-" onchange="updateScore('${s.id}', ${r}, this.value)">
+            </td>`).join('')}
+          <td>
+            <button class="del" onclick="toggleExpand('${s.id}')" title="문자 보기">${expandedStudentId === s.id ? '▲' : '▾'}</button>
+            <button class="del" onclick="deleteStudent('${s.id}', event)" title="삭제">✕</button>
+          </td>
+        </tr>`;
+      if(expandedStudentId === s.id){
+        bodyRows += `<tr class="expand-row"><td colspan="7">${renderMessagesFor(s)}</td></tr>`;
+      }
+    });
+  }
+
+  let avgRow = `<tr class="avg-row"><td class="name-cell">회차 평균</td>`;
+  ROUNDS.forEach(r => {
+    const { count, avg } = roundStats(r);
+    avgRow += `<td>${count ? formatAvg(avg) + '점' : '-'}</td>`;
+  });
+  avgRow += `<td></td></tr>`;
+
+  table.innerHTML = thead + `<tbody>${bodyRows}</tbody><tfoot>${avgRow}</tfoot>`;
+}
+
+function renderMessagesFor(student){
+  const filled = ROUNDS.filter(r => student.scores[r] !== undefined && student.scores[r] !== null && student.scores[r] !== '');
+  if(filled.length === 0){
+    return `<div class="no-scores-yet">아직 입력된 점수가 없어요. 점수를 넣으면 여기에 문자가 자동으로 만들어져요.</div>`;
+  }
+  return `<div class="msg-grid">
+    ${filled.map(r => {
+      const text = generateMessage(student, r);
+      const comment = (student.comments && student.comments[r]) || '';
+      return `
+        <div class="msg-card" style="background:var(--${ROUND_COLORS[r]}-soft);">
+          <span class="mhead" style="background:${ROUND_HEX[r]};">${r}회차</span>
+          <pre>${escapeHtml(text)}</pre>
+          <textarea placeholder="특이사항 입력..." onchange="updateComment('${student.id}', ${r}, this.value)">${escapeHtml(comment)}</textarea>
+          <button class="copy-btn" onclick="copyMessage('${student.id}', ${r}, this)">복사하기</button>
+        </div>`;
+    }).join('')}
+  </div>`;
+}
+
+init();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>특강 문자발송</title>
+<style>
+  :root{
+    --bg:#FFFDF7;
+    --ink:#2B2140;
+    --sub:#8B84A6;
+    --line:#ECE8F5;
+    --brand:#6C5CE7;
+    --brand-soft:#EDEBFC;
+    --ok:#2FBF71;
+    --r1:#FF6B6B; --r1-soft:#FFEDED;
+    --r2:#FFA94D; --r2-soft:#FFF4E5;
+    --r3:#2FBF71; --r3-soft:#E7FAF0;
+    --r4:#339AF0; --r4-soft:#E8F4FE;
+    --r5:#CC5DE8; --r5-soft:#FBEBFC;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",-apple-system,sans-serif;
+    line-height:1.5;
+  }
+  .wrap{ max-width:1080px; margin:0 auto; padding:26px 22px 70px; }
+
+  .hero{
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+    margin-bottom:22px;
+  }
+  .hero h1{
+    font-size:24px; margin:0; font-weight:900; letter-spacing:-.01em;
+    background:linear-gradient(90deg, var(--r1), var(--r2), var(--r3), var(--r4), var(--r5));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .hero .sub{ font-size:12.5px; color:var(--sub); margin-top:2px; }
+
+  .course-tabs{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:22px; }
+  .course-tab{
+    background:#fff; border:2px solid var(--line); color:var(--sub);
+    padding:9px 16px; border-radius:999px; font-size:13.5px; font-weight:800; cursor:pointer;
+    display:flex; align-items:center; gap:8px; transition:.15s ease;
+  }
+  .course-tab:hover{ border-color:var(--brand); color:var(--brand); }
+  .course-tab.active{ background:var(--brand); border-color:var(--brand); color:#fff; box-shadow:0 4px 14px rgba(108,92,231,.3); }
+  .course-tab .x{ opacity:.6; font-size:11px; }
+  .course-tab .x:hover{ opacity:1; }
+  .course-tab-add{
+    background:none; border:2px dashed #D8D2F0; color:var(--brand); padding:9px 16px; border-radius:999px;
+    font-size:13.5px; font-weight:800; cursor:pointer;
+  }
+  .course-tab-add:hover{ background:var(--brand-soft); }
+
+  .no-course{
+    text-align:center; padding:80px 20px; color:var(--sub); font-size:14.5px;
+    border:2px dashed var(--line); border-radius:18px; background:#fff;
+  }
+
+  .topics-row{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:18px; }
+  .topic-card{ border-radius:14px; padding:10px 12px; }
+  .topic-card .rlabel{ font-size:11px; font-weight:900; color:#fff; display:inline-block; padding:2px 8px; border-radius:8px; margin-bottom:6px; }
+  .topic-card input{ width:100%; border:none; background:rgba(255,255,255,.7); border-radius:8px; padding:6px 8px; font-size:12.5px; font-family:inherit; }
+  .topic-card input::placeholder{ color:#00000055; }
+  .topic-card input:focus{ outline:2px solid rgba(0,0,0,.15); }
+
+  .add-student-bar{ display:flex; gap:8px; margin-bottom:16px; }
+  .add-student-bar input{ flex:1; padding:10px 14px; border-radius:12px; border:2px solid var(--line); font-size:14px; font-family:inherit; background:#fff; }
+  .add-student-bar input:focus{ outline:none; border-color:var(--brand); }
+  .add-student-bar button{ background:var(--brand); color:#fff; border:none; padding:10px 20px; border-radius:12px; font-size:14px; font-weight:800; cursor:pointer; white-space:nowrap; }
+  .add-student-bar button:hover{ opacity:.9; }
+
+  .grade-card{ background:#fff; border-radius:18px; overflow:hidden; box-shadow:0 2px 10px rgba(43,33,64,.06); margin-bottom:24px; border:1px solid var(--line); }
+  table.grade-table{ width:100%; border-collapse:collapse; }
+  .grade-table th, .grade-table td{ padding:11px 10px; text-align:center; font-size:13px; }
+  .grade-table thead th{ background:#faf9ff; font-size:11.5px; color:var(--sub); font-weight:800; border-bottom:2px solid var(--line); }
+  .grade-table thead th.name-col{ text-align:left; padding-left:16px; }
+  .grade-table tbody tr{ border-bottom:1px solid var(--line); }
+  .grade-table tbody tr:last-child{ border-bottom:none; }
+  .name-cell{ text-align:left !important; padding-left:16px !important; }
+  .name-cell .nm{ font-weight:800; font-size:14px; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .name-cell .nm:hover{ color:var(--brand); }
+  .name-cell .del{ background:none; border:none; color:#ccc; cursor:pointer; font-size:11px; padding:2px 5px; }
+  .name-cell .del:hover{ color:#e05; }
+  .score-input{
+    width:56px; text-align:center; padding:6px 4px; border-radius:8px; font-size:13px; font-weight:700;
+    font-family:inherit; background:#fff;
+  }
+  .score-input:focus{ outline:none; }
+  .r1-cell .score-input{ border:2px solid var(--r1); color:var(--r1); }
+  .r2-cell .score-input{ border:2px solid var(--r2); color:#c47100; }
+  .r3-cell .score-input{ border:2px solid var(--r3); color:#1a8f52; }
+  .r4-cell .score-input{ border:2px solid var(--r4); color:#1c6fb8; }
+  .r5-cell .score-input{ border:2px solid var(--r5); color:#a239bd; }
+  .avg-row td{ background:#faf9ff; font-weight:800; color:var(--sub); font-size:12px; }
+  .empty-roster{ padding:40px 10px; text-align:center; color:var(--sub); font-size:13.5px; }
+
+  .expand-row td{ background:#fbfaff; padding:16px 20px 20px !important; text-align:left !important; }
+  .msg-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:12px; }
+  .msg-card{ border-radius:14px; padding:14px; }
+  .msg-card .mhead{ font-size:11.5px; font-weight:900; color:#fff; display:inline-block; padding:3px 10px; border-radius:8px; margin-bottom:8px; }
+  .msg-card pre{ white-space:pre-wrap; font-family:inherit; font-size:12.5px; background:rgba(255,255,255,.75); border-radius:10px; padding:10px; margin:0 0 8px; line-height:1.6; }
+  .msg-card textarea{ width:100%; border:none; border-radius:8px; padding:7px 9px; font-size:12px; font-family:inherit; resize:vertical; min-height:44px; margin-bottom:8px; background:rgba(255,255,255,.85); }
+  .msg-card textarea:focus{ outline:2px solid rgba(0,0,0,.12); }
+  .msg-card .copy-btn{ background:rgba(255,255,255,.9); border:none; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; }
+  .msg-card .copy-btn:hover{ background:#fff; }
+  .msg-card .copy-btn.copied{ background:var(--ok); color:#fff; }
+  .no-scores-yet{ color:var(--sub); font-size:12.5px; padding:6px 2px; }
+
+  .save-pill{
+    position:fixed; bottom:18px; right:18px; background:var(--ink); color:#fff; font-size:12px; font-weight:700;
+    padding:8px 16px; border-radius:999px; opacity:0; transition:opacity .2s ease; pointer-events:none; z-index:50;
+  }
+  .save-pill.show{ opacity:.92; }
+
+  .course-info-bar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--line);
+    border-radius:14px; padding:10px 16px; margin-bottom:18px; font-size:12.5px; color:var(--sub);
+  }
+  .course-info-bar b{ color:var(--ink); }
+  .course-info-bar .edit-link{ background:none; border:none; color:var(--brand); font-size:12px; font-weight:800; cursor:pointer; margin-left:auto; }
+  .course-edit-form{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .course-edit-form input{ padding:6px 10px; border:1px solid var(--line); border-radius:8px; font-size:12.5px; font-family:inherit; width:120px; }
+  .course-edit-form button{ background:var(--brand); color:#fff; border:none; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; }
+  .seed-btn{
+    background:linear-gradient(90deg, var(--r1), var(--r5)); color:#fff; border:none; padding:9px 18px;
+    border-radius:999px; font-size:13px; font-weight:800; cursor:pointer; margin-bottom:16px;
+  }
+  .seed-btn:hover{ opacity:.9; }
+  .setup-wrap{ max-width:520px; margin:70px auto; padding:0 20px; }
+  .setup-wrap h2{ font-size:20px; color:var(--ink); }
+  .setup-wrap input{ width:100%; padding:11px 14px; border:2px solid var(--line); border-radius:12px; font-size:13.5px; margin:14px 0; font-family:inherit; }
+  .setup-wrap button{ background:var(--brand); color:#fff; border:none; padding:11px 20px; border-radius:12px; font-size:14px; font-weight:800; cursor:pointer; }
+
+  @media (max-width:760px){
+    .topics-row{ grid-template-columns:repeat(2,1fr); }
+    .grade-table{ font-size:12px; }
+    .score-input{ width:42px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <div class="loading" style="padding:60px;text-align:center;color:var(--sub);">불러오는 중...</div>
+</div>
+<div class="save-pill" id="savePill">저장됨 ✓</div>
+
+<script>
+const ROUND_COLORS = { 1:'r1', 2:'r2', 3:'r3', 4:'r4', 5:'r5' };
+const ROUND_HEX = { 1:'#FF6B6B', 2:'#FFA94D', 3:'#2FBF71', 4:'#339AF0', 5:'#CC5DE8' };
+const ROUNDS = [1,2,3,4,5];
+const COURSES_KEY = 'sg_courses_v1';
+function studentsKey(courseId){ return 'sg_students_' + courseId; }
+function topicsKey(courseId){ return 'sg_topics_' + courseId; }
+
+let API_URL = localStorage.getItem('sg_api_url') || '';
+let courses = [];
+let currentCourseId = null;
+let students = [];
+let topics = {1:'',2:'',3:'',4:'',5:''};
+let expandedStudentId = null;
+let storageAvailable = true;
+
+/* ---------- storage ---------- */
+async function apiGet(key){
+  const res = await fetch(`${API_URL}?action=get&key=${encodeURIComponent(key)}`);
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'get failed');
+  return data.value;
+}
+async function apiBatchGet(keys){
+  const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'batchGet', keys }) });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'batchGet failed');
+  return data.values || {};
+}
+async function apiSet(key, value){
+  const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'set', key, value }) });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'set failed');
+  return true;
+}
+async function apiDelete(key){
+  const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'delete', key }) });
+  const data = await res.json();
+  return !!data.ok;
+}
+async function loadJSON(key, fallback){
+  try{ const raw = await apiGet(key); return raw ? JSON.parse(raw) : fallback; }
+  catch(e){ storageAvailable = false; return fallback; }
+}
+async function saveJSON(key, value){
+  try{ await apiSet(key, JSON.stringify(value)); storageAvailable = true; flashSave(true); return true; }
+  catch(e){ storageAvailable = false; flashSave(false); return false; }
+}
+function flashSave(ok){
+  const el = document.getElementById('savePill');
+  el.textContent = ok ? '저장됨 ✓' : '⚠ 저장 실패';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+
+/* ---------- setup screen (첫 실행 시 백엔드 URL 연결) ---------- */
+function renderSetup(){
+  document.getElementById('app').innerHTML = `
+    <div class="setup-wrap">
+      <h2>🎨 처음 설정 — 저장소 연결</h2>
+      <p style="color:var(--sub);font-size:13px;line-height:1.7;">
+        새 구글시트에 Apps Script를 배포해서 나온 <b>웹 앱 URL</b>을 붙여넣어주세요.<br>
+        (형태: <code>https://script.google.com/macros/s/xxxx/exec</code>)
+      </p>
+      <input type="text" id="setupUrl" placeholder="https://script.google.com/macros/s/...">
+      <button onclick="saveApiUrl()">연결하고 시작하기</button>
+      <div id="setupMsg" style="margin-top:10px;font-size:13px;"></div>
+    </div>
+  `;
+}
+async function saveApiUrl(){
+  const input = document.getElementById('setupUrl');
+  const url = input.value.trim();
+  const msg = document.getElementById('setupMsg');
+  if(!url.startsWith('https://script.google.com/')){
+    msg.style.color = '#e05'; msg.textContent = '올바른 Apps Script 웹 앱 URL이 아닌 것 같아요.';
+    return;
+  }
+  msg.style.color = 'var(--sub)'; msg.textContent = '연결 확인 중...';
+  API_URL = url;
+  try{
+    const res = await fetch(`${API_URL}?action=list&prefix=`);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || '연결 실패');
+    localStorage.setItem('sg_api_url', url);
+    location.reload();
+  }catch(e){
+    msg.style.color = '#e05';
+    msg.textContent = '연결에 실패했어요. 배포 시 "액세스 권한: 전체(Anyone)"인지 확인해주세요.';
+    API_URL = '';
+  }
+}
+
+/* ---------- 시트 기반 시드 데이터 (2026.07 방학특강) ---------- */
+const SEED_COURSES = [
+  { name:'공통수학1 극심화(월수금)', day:'월수금', time:'12:30~16:30', teacher:'윤기훈T',
+    students:['금연우','이지후','이도윤'] },
+  { name:'공통수학1 극심화(화목)', day:'화목', time:'12:30~16:30', teacher:'김재헌T',
+    students:['신윤상','임수현','최주원B','김윤수','서장원','신지율','이지성','권규리','김민욱','김시우'] },
+  { name:'삼각함수 & 수열', day:'월수금', time:'12:30~16:30', teacher:'성우진T',
+    students:['김민종','김세희','김진진','김현수','김현아','박지환','이은성','임서윤','한서연','허민재','허윤재','권건우','박수연','황예빈'] },
+  { name:'미분 첫걸음', day:'화목일', time:'12:30~16:30', teacher:'이정석T',
+    students:['김시윤C','남연희','박수빈','이윤우','손채형','김강우','이진혁','김준수'] },
+  { name:'공통수학1 메이저클래스', day:'월수금', time:'12:00~16:00', teacher:'김도욱T',
+    students:['김도도','김윤희','권예준','오채훈','정하린','조윤경'] },
+  { name:'공통수학1 마스터클래스', day:'화목일', time:'12:30~16:30', teacher:'김헌민T',
+    students:['이준성B','이준성C','이지한','최원석','남건후','서진후','임재인','황준하'] },
+  { name:'중등 기하마스터', day:'월수금', time:'12:30~16:30', teacher:'김은성T',
+    students:['왕혜린','김지민','박윤우','박지효','설재아','심예린','안시우','이수빈B','조은규','최주원A','정지호','남하연','황유진','김도현(1관)','한윤서','김지율'] },
+  { name:'중2-2 응용+심화', day:'화목토', time:'11:00~14:30(토9:00~12:30)', teacher:'정예운T',
+    students:['박도원','우형찬','이준후','임하율','홍세윤','황유하','최시현','곽민서','이동주','이지혜','염윤지'] },
+  { name:'중2-1 응용+심화', day:'월수금', time:'11:00~14:30', teacher:'김효원T',
+    students:['강하준','김건호','김범준','손지우','이찬영','장하경','지서연','최시현','홍예지'] },
+  { name:'중1~2 대수 총정리', day:'화목토', time:'11:00~14:30', teacher:'김유현T',
+    students:['김로하','김하린','송우정','안수경','여동훈a','이재민','정재윤','김수민','이다현','이수','배유빈','이제민','김민결','김장경','정아진'] },
+  { name:'중1-1 기본+응용(월수금)', day:'월수금', time:'11:00~14:30(수14:30~18:00)', teacher:'정예운T',
+    students:['강현서','김도연','김동유','김승민','명서하','소하윤','오진영','유안나','유지호','최혜원','홍연서','송민준','서혜리','신현규'] },
+  { name:'중1-1 기본+응용(화목토)', day:'화목토', time:'11:00~14:30(토16:00~19:30)', teacher:'김은성T',
+    students:['김세하','김연호','김예나','김우현','송재원','이지우','이진','임세현','나은'] },
+  { name:'중1-1 미리보기', day:'화목토', time:'11:00~14:30', teacher:'박인선T',
+    students:['신재훈','정서아','채주아'] },
+  { name:'초6 서술', day:'월수금', time:'12:00~14:30', teacher:'김유현T',
+    students:['강유주','강준휘','김동준','김진','유지현','이세하','이하민','임서진','엄세린','최서윤','박서율','변규현'] },
+  { name:'초6 비와 비례', day:'화목금', time:'12:00~14:30', teacher:'박수현T',
+    students:['강은재','남은우','서하연','이정원','정효아','김래온','강하윤','김지성','김채원A','유이현','임정후','김윤','김주원','이재우','양해원','변규현'] },
+  { name:'초5 약수와 배수', day:'월수금', time:'12:00~14:30', teacher:'박인선T',
+    students:['울유빈','최서우B','남지우','김지한'] },
+  { name:'초4-1심화 핵심정리', day:'화목', time:'12:00~14:30', teacher:'김효원T',
+    students:['김민준','김태완','박서원','신지원','유하린','이태윤','장예온','황제다','김현','이루이(외부생)'] },
+  { name:'초3 서술', day:'월수', time:'12:00~14:30', teacher:'박수현T',
+    students:['최윤슬','임리아','양예준','이예람','양지안','서제이'] },
+  { name:'KJMO 대비 특강', day:'화목', time:'12:30~16:30', teacher:'김도욱T',
+    students:['강리안','배재정','오시울','이준민','임예중'] },
+  { name:'중1-2 내신대비 특강', day:'월수금', time:'11:30~14:30', teacher:'유재은T',
+    students:['이시윤'] },
+  { name:'중등 기하마스터(프리미엄)', day:'월수금', time:'10:30~14:30', teacher:'유재은T',
+    students:[] },
+];
+
+async function importSeedCourses(){
+  if(!confirm('시트 기준 특강 21개를 한 번에 불러올까요?\n이미 있는 특강/학생은 건너뛰어요.')) return;
+  let addedCourses = 0, addedStudents = 0;
+  for(const seed of SEED_COURSES){
+    let c = courses.find(x => x.name === seed.name);
+    if(!c){
+      c = { id:'course_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), name:seed.name, day:seed.day, time:seed.time, teacher:seed.teacher };
+      courses.push(c);
+      addedCourses++;
+    }
+    let cStudents = await loadJSON(studentsKey(c.id), []);
+    seed.students.forEach(name => {
+      if(!cStudents.some(s => s.name === name)){
+        cStudents.push({ id:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name, scores:{}, comments:{} });
+        addedStudents++;
+      }
+    });
+    await saveJSON(studentsKey(c.id), cStudents);
+    if(!(await apiGet(topicsKey(c.id)))){
+      await saveJSON(topicsKey(c.id), {1:'',2:'',3:'',4:'',5:''});
+    }
+  }
+  await saveJSON(COURSES_KEY, courses);
+  if(!currentCourseId && courses.length){ currentCourseId = courses[0].id; }
+  if(currentCourseId) await loadCourseData(currentCourseId);
+  render();
+  alert(`불러오기 완료!\n특강 ${addedCourses}개, 학생 ${addedStudents}명 등록됐어요.`);
+}
+
+/* ---------- init ---------- */
+async function init(){
+  if(!API_URL){ renderSetup(); return; }
+  document.getElementById('app').innerHTML = '<div class="loading" style="padding:60px;text-align:center;color:var(--sub);">불러오는 중...</div>';
+  courses = await loadJSON(COURSES_KEY, []);
+  if(courses.length > 0){
+    currentCourseId = courses[0].id;
+    await loadCourseData(currentCourseId);
+  }
+  render();
+}
+
+async function loadCourseData(courseId){
+  let batch = {};
+  try{ batch = await apiBatchGet([studentsKey(courseId), topicsKey(courseId)]); }
+  catch(e){ storageAvailable = false; }
+  students = batch[studentsKey(courseId)] ? JSON.parse(batch[studentsKey(courseId)]) : [];
+  students.forEach(s => { if(!s.scores) s.scores={}; if(!s.comments) s.comments={}; });
+  topics = batch[topicsKey(courseId)] ? JSON.parse(batch[topicsKey(courseId)]) : {1:'',2:'',3:'',4:'',5:''};
+}
+
+/* ---------- course management ---------- */
+async function addCourse(){
+  const name = prompt('새 특강 이름을 입력해주세요 (예: 대수 특강)');
+  if(!name || !name.trim()) return;
+  const id = 'course_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  courses.push({ id, name: name.trim(), day:'', time:'', teacher:'' });
+  await saveJSON(COURSES_KEY, courses);
+  currentCourseId = id;
+  students = [];
+  topics = {1:'',2:'',3:'',4:'',5:''};
+  await saveJSON(studentsKey(id), students);
+  await saveJSON(topicsKey(id), topics);
+  render();
+}
+
+let editingCourseInfo = false;
+function toggleCourseInfoEdit(){
+  editingCourseInfo = !editingCourseInfo;
+  render();
+}
+async function saveCourseInfo(){
+  const c = courses.find(x => x.id === currentCourseId);
+  if(!c) return;
+  c.name = document.getElementById('editCourseName').value.trim() || c.name;
+  c.day = document.getElementById('editCourseDay').value.trim();
+  c.time = document.getElementById('editCourseTime').value.trim();
+  c.teacher = document.getElementById('editCourseTeacher').value.trim();
+  await saveJSON(COURSES_KEY, courses);
+  editingCourseInfo = false;
+  render();
+}
+
+async function deleteCourse(courseId, evt){
+  if(evt) evt.stopPropagation();
+  const c = courses.find(x => x.id === courseId);
+  if(!c) return;
+  if(!confirm(`'${c.name}'을(를) 삭제할까요?\n학생 명단과 성적이 모두 사라지고 되돌릴 수 없어요.`)) return;
+  courses = courses.filter(x => x.id !== courseId);
+  await saveJSON(COURSES_KEY, courses);
+  try{ await apiDelete(studentsKey(courseId)); }catch(e){}
+  try{ await apiDelete(topicsKey(courseId)); }catch(e){}
+  if(currentCourseId === courseId){
+    if(courses.length){ currentCourseId = courses[0].id; await loadCourseData(currentCourseId); }
+    else{ currentCourseId = null; students = []; topics = {1:'',2:'',3:'',4:'',5:''}; }
+  }
+  render();
+}
+
+async function selectCourse(courseId){
+  if(courseId === currentCourseId) return;
+  currentCourseId = courseId;
+  expandedStudentId = null;
+  document.getElementById('app').innerHTML = '<div class="loading" style="padding:60px;text-align:center;color:var(--sub);">불러오는 중...</div>';
+  await loadCourseData(courseId);
+  render();
+}
+
+/* ---------- topics ---------- */
+async function updateTopic(round, value){
+  topics[round] = value;
+  await saveJSON(topicsKey(currentCourseId), topics);
+}
+
+/* ---------- students ---------- */
+async function addStudent(){
+  const input = document.getElementById('newStudentName');
+  const name = input.value.trim();
+  if(!name) { input.focus(); return; }
+  students.push({ id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), name, scores:{}, comments:{} });
+  input.value = '';
+  await saveJSON(studentsKey(currentCourseId), students);
+  render();
+}
+async function deleteStudent(studentId, evt){
+  if(evt) evt.stopPropagation();
+  if(!confirm('이 학생을 삭제할까요? 성적 기록도 함께 사라져요.')) return;
+  students = students.filter(s => s.id !== studentId);
+  if(expandedStudentId === studentId) expandedStudentId = null;
+  await saveJSON(studentsKey(currentCourseId), students);
+  render();
+}
+async function updateScore(studentId, round, value){
+  const s = students.find(x => x.id === studentId);
+  if(!s) return;
+  if(value === ''){ delete s.scores[round]; }
+  else{ s.scores[round] = Number(value); }
+  await saveJSON(studentsKey(currentCourseId), students);
+  renderTableOnly();
+}
+async function updateComment(studentId, round, value){
+  const s = students.find(x => x.id === studentId);
+  if(!s) return;
+  s.comments = s.comments || {};
+  s.comments[round] = value;
+  await saveJSON(studentsKey(currentCourseId), students);
+  renderTableOnly();
+}
+function toggleExpand(studentId){
+  expandedStudentId = (expandedStudentId === studentId) ? null : studentId;
+  renderTableOnly();
+}
+
+/* ---------- grade calc & message ---------- */
+function roundStats(round){
+  const vals = students.map(s => s.scores[round]).filter(v => v !== undefined && v !== null && v !== '').map(Number);
+  const count = vals.length;
+  const avg = count ? vals.reduce((a,b)=>a+b,0) / count : 0;
+  return { count, avg };
+}
+function formatAvg(n){
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+function rankFor(round, score){
+  const vals = students.map(s => s.scores[round]).filter(v => v !== undefined && v !== null && v !== '').map(Number);
+  return 1 + vals.filter(v => v > score).length;
+}
+function generateMessage(student, round){
+  const score = student.scores[round];
+  if(score === undefined || score === null || score === '') return null;
+  const { count, avg } = roundStats(round);
+  const rank = rankFor(round, score);
+  const course = courses.find(c => c.id === currentCourseId);
+  const comment = (student.comments && student.comments[round]) || '';
+  return [
     `${student.name}학생`,
     `${course ? course.name : ''} ${round}회차 일일TEST 성적`,
     `점수 : ${score}점`,

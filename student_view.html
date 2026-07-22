@@ -22,6 +22,7 @@
     color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
   .card h2{font-size:15px;margin:0 0 14px;color:var(--navy);}
+  .card h3{font-size:13px;margin:18px 0 10px;color:var(--muted);font-weight:600;}
   .greet{font-size:16px;font-weight:600;margin-bottom:4px;}
   .sub{font-size:13px;color:var(--muted);}
   table{width:100%;border-collapse:collapse;font-size:13px;}
@@ -32,7 +33,7 @@
     padding:2px 8px;font-size:11px;margin:2px 2px 0 0;}
   .empty{color:var(--muted);font-size:13px;padding:10px 0;}
   #app{display:none;}
-  canvas{max-height:260px;}
+  canvas{max-height:240px;}
   .tabs{display:flex;gap:8px;margin-bottom:14px;}
   .tab{flex:1;text-align:center;padding:8px;border-radius:8px;background:#EFEDE5;color:var(--muted);font-size:13px;cursor:pointer;border:1px solid transparent;}
   .tab.active{background:var(--navy);color:#fff;}
@@ -67,12 +68,6 @@
     <div class="card">
       <h2>성적 추이</h2>
 
-      <div class="tabs">
-        <div class="tab active" data-type="전체" onclick="setTypeFilter('전체')">통합</div>
-        <div class="tab" data-type="기본" onclick="setTypeFilter('기본')">기본</div>
-        <div class="tab" data-type="심화" onclick="setTypeFilter('심화')">심화</div>
-      </div>
-
       <div class="periodRow">
         <label>기간</label>
         <input type="date" id="periodStart" onchange="setPeriod()">
@@ -80,19 +75,29 @@
         <input type="date" id="periodEnd" onchange="setPeriod()">
         <button onclick="resetPeriod()">전체보기</button>
       </div>
-      <div class="periodHint">기간을 지정하지 않으면 지금까지의 전체 기록이 누적으로 표시됩니다.</div>
+      <div class="periodHint">기간을 지정하지 않으면 지금까지의 전체 기록이 누적으로 표시됩니다. 이 기간은 아래 주간·월간 그래프에 함께 적용됩니다.</div>
 
-      <canvas id="trendChart"></canvas>
-      <div class="empty" id="chartEmpty" style="display:none;">그래프를 그릴 기록이 아직 없습니다.</div>
+      <h3>주간테스트</h3>
+      <div class="tabs">
+        <div class="tab active" data-type="전체" onclick="setTypeFilter('전체')">통합</div>
+        <div class="tab" data-type="기본" onclick="setTypeFilter('기본')">기본</div>
+        <div class="tab" data-type="심화" onclick="setTypeFilter('심화')">심화</div>
+      </div>
+      <canvas id="weeklyChart"></canvas>
+      <div class="empty" id="weeklyChartEmpty" style="display:none;">그래프를 그릴 주간 기록이 아직 없습니다.</div>
+
+      <h3>월간테스트</h3>
+      <canvas id="monthlyChart"></canvas>
+      <div class="empty" id="monthlyChartEmpty" style="display:none;">그래프를 그릴 월간 기록이 아직 없습니다.</div>
     </div>
 
     <div class="card">
-      <h2>주간테스트</h2>
+      <h2>주간테스트 기록</h2>
       <table id="weeklyTable"><thead><tr><th>날짜</th><th>유형</th><th>단원</th><th>점수</th><th>반평균</th><th>등수</th><th>특징</th></tr></thead><tbody></tbody></table>
     </div>
 
     <div class="card">
-      <h2>월간테스트</h2>
+      <h2>월간테스트 기록</h2>
       <table id="monthlyTable"><thead><tr><th>회차</th><th>날짜</th><th>범위</th><th>점수</th><th>평균</th><th>등수</th></tr></thead><tbody></tbody></table>
     </div>
 
@@ -109,7 +114,8 @@
 
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzg666g2wspPQ7rrL9ydIscWXN5XaJSJTTEkfHzyT-5wRTXQJsQCogfAtw6qw9bPG__/exec';
-let chartInstance = null;
+let weeklyChartInstance = null;
+let monthlyChartInstance = null;
 let currentData = null;
 let typeFilter = '전체';
 let commentTab = 'weekly';
@@ -173,6 +179,10 @@ function filteredWeekly(){
   if(!currentData) return [];
   return currentData.weekly.filter(r => (typeFilter === '전체' || r.유형 === typeFilter) && inPeriod(r.날짜));
 }
+function periodWeekly(){
+  if(!currentData) return [];
+  return currentData.weekly.filter(r => inPeriod(r.날짜));
+}
 function filteredMonthly(){
   if(!currentData) return [];
   return currentData.monthly.filter(r => inPeriod(r.날짜));
@@ -191,7 +201,8 @@ function renderAll(){
   const mBody = document.querySelector('#monthlyTable tbody');
   mBody.innerHTML = monthly.slice().reverse().map(r => '<tr><td>' + r.회차 + '</td><td>' + fmtDate(r.날짜) + '</td><td>' + (r.시험범위||'-') + '</td><td class="score">' + r.점수 + '/' + r.총점 + '</td><td>' + (r.반평균||'-') + '</td><td>' + (r.등수||'-') + '</td></tr>').join('') || '<tr><td colspan="6" class="empty">기록 없음</td></tr>';
 
-  renderChart();
+  renderWeeklyChart();
+  renderMonthlyChart();
   renderComments();
 }
 
@@ -206,38 +217,76 @@ function renderComments(){
   }).join('');
 }
 
-function renderChart(){
-  const weekly = filteredWeekly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
-  const monthly = filteredMonthly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+function renderWeeklyChart(){
+  const weeklyAll = periodWeekly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
 
-  if(weekly.length === 0 && monthly.length === 0){
-    document.getElementById('chartEmpty').style.display = 'block';
-    document.getElementById('trendChart').style.display = 'none';
+  if(weeklyAll.length === 0){
+    document.getElementById('weeklyChartEmpty').style.display = 'block';
+    document.getElementById('weeklyChart').style.display = 'none';
     return;
   }
-  document.getElementById('chartEmpty').style.display = 'none';
-  document.getElementById('trendChart').style.display = 'block';
+  document.getElementById('weeklyChartEmpty').style.display = 'none';
+  document.getElementById('weeklyChart').style.display = 'block';
 
-  const labels = weekly.map(r => fmtDate(r.날짜) + ' ' + (r.시험단원||''));
-  const scores = weekly.map(r => Number(r.점수));
-  const classAvgs = weekly.map(r => r.반평균 ? Number(r.반평균) : null);
+  const labels = weeklyAll.map(r => fmtDate(r.날짜) + ' ' + (r.시험단원||''));
+  let datasets;
 
-  const monthlyLabels = monthly.map(r => r.회차);
-  const monthlyScores = monthly.map(r => Number(r.점수));
-  const monthlyAvgs = monthly.map(r => r.반평균 ? Number(r.반평균) : null);
+  if(typeFilter === '전체'){
+    const basicScores = weeklyAll.map(r => r.유형 === '기본' ? Number(r.점수) : null);
+    const advScores = weeklyAll.map(r => r.유형 === '심화' ? Number(r.점수) : null);
+    const avgs = weeklyAll.map(r => r.반평균 ? Number(r.반평균) : null);
+    datasets = [
+      { label: '기본', data: basicScores, borderColor: '#D85A30', backgroundColor: '#D85A30', spanGaps: true, tension: 0.2 },
+      { label: '심화', data: advScores, borderColor: '#1B2A4A', backgroundColor: '#1B2A4A', spanGaps: true, tension: 0.2 },
+      { label: '반평균', data: avgs, borderColor: '#C9A24B', backgroundColor: '#C9A24B', borderDash: [5,5], tension: 0.2 }
+    ];
+  } else {
+    const own = weeklyAll.map(r => r.유형 === typeFilter ? Number(r.점수) : null);
+    const avgs = weeklyAll.map(r => r.유형 === typeFilter ? (r.반평균 ? Number(r.반평균) : null) : null);
+    datasets = [
+      { label: typeFilter + ' 점수', data: own, borderColor: '#D85A30', backgroundColor: '#D85A30', spanGaps: true, tension: 0.2 },
+      { label: '반평균', data: avgs, borderColor: '#C9A24B', backgroundColor: '#C9A24B', borderDash: [5,5], spanGaps: true, tension: 0.2 }
+    ];
+  }
 
-  const ctx = document.getElementById('trendChart').getContext('2d');
-  if(chartInstance) chartInstance.destroy();
-  chartInstance = new Chart(ctx, {
+  const ctx = document.getElementById('weeklyChart').getContext('2d');
+  if(weeklyChartInstance) weeklyChartInstance.destroy();
+  weeklyChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: false } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+    }
+  });
+}
+
+function renderMonthlyChart(){
+  const monthly = filteredMonthly().slice().sort((a,b) => new Date(a.날짜) - new Date(b.날짜));
+
+  if(monthly.length === 0){
+    document.getElementById('monthlyChartEmpty').style.display = 'block';
+    document.getElementById('monthlyChart').style.display = 'none';
+    return;
+  }
+  document.getElementById('monthlyChartEmpty').style.display = 'none';
+  document.getElementById('monthlyChart').style.display = 'block';
+
+  const labels = monthly.map(r => r.회차);
+  const scores = monthly.map(r => Number(r.점수));
+  const avgs = monthly.map(r => r.반평균 ? Number(r.반평균) : null);
+
+  const ctx = document.getElementById('monthlyChart').getContext('2d');
+  if(monthlyChartInstance) monthlyChartInstance.destroy();
+  monthlyChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels.length ? labels : monthlyLabels,
+      labels,
       datasets: [
-        weekly.length ? { label: '내 점수 (주간)', data: scores, borderColor: '#D85A30', backgroundColor: '#D85A30', tension: 0.2 } : null,
-        weekly.length ? { label: '반평균 (주간)', data: classAvgs, borderColor: '#C9A24B', backgroundColor: '#C9A24B', borderDash: [5,5], tension: 0.2 } : null,
-        monthly.length ? { label: '내 점수 (월간)', data: monthlyScores, borderColor: '#1B2A4A', backgroundColor: '#1B2A4A', tension: 0.2 } : null,
-        monthly.length ? { label: '반평균 (월간)', data: monthlyAvgs, borderColor: '#6B6E76', backgroundColor: '#6B6E76', borderDash: [5,5], tension: 0.2 } : null
-      ].filter(Boolean)
+        { label: '내 점수', data: scores, borderColor: '#1B2A4A', backgroundColor: '#1B2A4A', tension: 0.2 },
+        { label: '반평균', data: avgs, borderColor: '#6B6E76', backgroundColor: '#6B6E76', borderDash: [5,5], tension: 0.2 }
+      ]
     },
     options: {
       responsive: true,

@@ -1091,11 +1091,11 @@ function generateMessage(student, round){
   const course = courses.find(c => c.id === currentCourseId);
   const comment = (student.comments && student.comments[round]) || '';
   return [
-    `${student.name}학생`,
+    `${student.name} 학생`,
     `${course ? course.name : ''} ${round}회차 일일TEST 성적`,
     `점수 : ${score}점`,
     `평균 : ${formatAvg(avg)}점`,
-    `${count}명중 ${rank}등`,
+    `${count}명 중 ${rank}등`,
     ``,
     `학생 특이사항 : ${comment}`
   ].join('\n');
